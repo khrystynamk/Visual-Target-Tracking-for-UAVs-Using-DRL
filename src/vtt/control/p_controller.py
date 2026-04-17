@@ -9,13 +9,13 @@ Control strategy:
 
 import numpy as np
 
-from vtt.constants import IMG_W, IMG_H, MAX_SPEED
+from vtt.constants import IMG_W, IMG_H, MAX_VEL
 
 TARGET_AREA = (IMG_W * 0.2) * (IMG_H * 0.2)
 
 KP_YAW = 0.5
-KP_FWD = MAX_SPEED / TARGET_AREA
-KP_VERT = MAX_SPEED / (IMG_H / 2)
+KP_FWD = MAX_VEL / TARGET_AREA
+KP_VERT = MAX_VEL / (IMG_H / 2)
 
 # Ignore small corrections from bbox
 FWD_DEADBAND = TARGET_AREA * 0.10
@@ -40,8 +40,8 @@ def compute_control(cx: float, cy: float, area: float):
     if abs(area_err) < FWD_DEADBAND:
         vx_body = 0.0
     else:
-        vx_body = np.clip(KP_FWD * area_err, -MAX_SPEED, MAX_SPEED)
+        vx_body = np.clip(KP_FWD * area_err, -MAX_VEL, MAX_VEL)
 
-    vz_ned = np.clip(KP_VERT * cy_err, -MAX_SPEED, MAX_SPEED)
+    vz_ned = np.clip(KP_VERT * cy_err, -MAX_VEL, MAX_VEL)
 
     return float(vx_body), float(vz_ned), float(yaw_rate)
