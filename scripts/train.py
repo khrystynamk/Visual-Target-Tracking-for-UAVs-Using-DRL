@@ -33,7 +33,11 @@ def main():
     parser = argparse.ArgumentParser(description="Train SAC tracking agent")
     parser.add_argument("--config", "-c", required=True, help="Path to YAML config")
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging")
-    parser.add_argument("--no-render", action="store_true", help="Disable UE viewport rendering (faster)")
+    parser.add_argument(
+        "--no-render",
+        action="store_true",
+        help="Disable UE viewport rendering (faster)",
+    )
     args = parser.parse_args()
 
     cfg = load_config(args.config)
