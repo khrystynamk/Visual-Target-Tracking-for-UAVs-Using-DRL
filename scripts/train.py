@@ -38,6 +38,12 @@ def main():
         action="store_true",
         help="Disable UE viewport rendering (faster)",
     )
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Path to checkpoint .zip to resume training from",
+    )
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -71,19 +77,31 @@ def main():
     env = make_env(env_cfg)
     eval_env = make_env(env_cfg)
 
-    model = SAC(
-        AsymmetricSACPolicy,
-        env,
-        learning_rate=sac_cfg["learning_rate"],
-        buffer_size=sac_cfg["buffer_size"],
-        batch_size=sac_cfg["batch_size"],
-        learning_starts=sac_cfg["learning_starts"],
-        train_freq=sac_cfg["train_freq"],
-        gamma=sac_cfg["gamma"],
-        tau=sac_cfg["tau"],
-        verbose=1,
-        device=device,
-    )
+    if args.resume:
+        print(f"Resuming from {args.resume}")
+        model = SAC.load(
+            args.resume,
+            env=env,
+            device=device,
+        )
+        replay_path = args.resume.replace(".zip", "_replay_buffer.pkl")
+        if os.path.exists(replay_path):
+            model.load_replay_buffer(replay_path)
+            print(f"Loaded replay buffer from {replay_path}")
+    else:
+        model = SAC(
+            AsymmetricSACPolicy,
+            env,
+            learning_rate=sac_cfg["learning_rate"],
+            buffer_size=sac_cfg["buffer_size"],
+            batch_size=sac_cfg["batch_size"],
+            learning_starts=sac_cfg["learning_starts"],
+            train_freq=sac_cfg["train_freq"],
+            gamma=sac_cfg["gamma"],
+            tau=sac_cfg["tau"],
+            verbose=1,
+            device=device,
+        )
 
     eval_callback = EvalCallback(
         eval_env,
@@ -112,7 +130,8 @@ def main():
 
     final_path = os.path.join(save_dir, "final_model")
     model.save(final_path)
-    print(f"Final model saved to {final_path}")
+    model.save_replay_buffer(os.path.join(save_dir, "final_model_replay_buffer.pkl"))
+    print(f"Final model + replay buffer saved to {final_path}")
 
     if not args.no_wandb:
         wandb.finish()
