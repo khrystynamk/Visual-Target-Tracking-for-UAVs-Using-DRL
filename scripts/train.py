@@ -68,11 +68,12 @@ def main():
     print(f"Using device: {device}")
 
     if not args.no_wandb:
-        wandb.init(
-            project=cfg["wandb"]["project"],
-            name=cfg["wandb"]["name"],
-            config=cfg,
-        )
+        wandb_kwargs = {
+            "project": cfg["wandb"]["project"],
+            "name": cfg["wandb"]["name"],
+            "config": cfg,
+        }
+        wandb.init(**wandb_kwargs)
 
     env = make_env(env_cfg)
     eval_env = make_env(env_cfg)
@@ -113,7 +114,7 @@ def main():
     )
 
     checkpoint_callback = CheckpointCallback(
-        save_freq=cfg["eval_freq"],
+        save_freq=1000,
         save_path=os.path.join(save_dir, "checkpoints"),
         name_prefix="sac",
     )
@@ -122,21 +123,26 @@ def main():
     modality = "depth" if env_cfg["use_depth"] else "RGB"
     print(f"Input modality: {modality}")
 
-    model.learn(
-        total_timesteps=sac_cfg["total_timesteps"],
-        callback=[eval_callback, checkpoint_callback],
-        log_interval=10,
-    )
+    try:
+        model.learn(
+            total_timesteps=sac_cfg["total_timesteps"],
+            callback=[eval_callback, checkpoint_callback],
+            log_interval=10,
+        )
+    except KeyboardInterrupt:
+        print("\nTraining interrupted! Saving current model...")
+    finally:
+        final_path = os.path.join(save_dir, "final_model")
+        model.save(final_path)
+        model.save_replay_buffer(
+            os.path.join(save_dir, "final_model_replay_buffer.pkl")
+        )
+        print(f"Model + replay buffer saved to {final_path}")
 
-    final_path = os.path.join(save_dir, "final_model")
-    model.save(final_path)
-    model.save_replay_buffer(os.path.join(save_dir, "final_model_replay_buffer.pkl"))
-    print(f"Final model + replay buffer saved to {final_path}")
+        if not args.no_wandb:
+            wandb.finish()
 
-    if not args.no_wandb:
-        wandb.finish()
-
-    env.close()
+        env.close()
     eval_env.close()
 
 
