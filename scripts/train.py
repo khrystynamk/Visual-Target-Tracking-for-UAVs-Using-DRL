@@ -11,6 +11,7 @@ import os
 
 import yaml
 import torch
+import airsim
 import wandb
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
@@ -32,6 +33,7 @@ def main():
     parser = argparse.ArgumentParser(description="Train SAC tracking agent")
     parser.add_argument("--config", "-c", required=True, help="Path to YAML config")
     parser.add_argument("--no-wandb", action="store_true", help="Disable W&B logging")
+    parser.add_argument("--no-render", action="store_true", help="Disable UE viewport rendering (faster)")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
@@ -40,6 +42,12 @@ def main():
     save_dir = cfg["save_dir"]
 
     os.makedirs(save_dir, exist_ok=True)
+
+    if args.no_render:
+        client = airsim.MultirotorClient()
+        client.confirmConnection()
+        client.simEnableWeather(False)  # ensure weather API is off
+        client.simSetViewMode(6)  # 6 = NoDisplay
 
     if torch.backends.mps.is_available():
         device = "mps"
