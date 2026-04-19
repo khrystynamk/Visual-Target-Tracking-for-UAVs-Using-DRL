@@ -1,7 +1,7 @@
 """
 Shared constants for the VTT project.
 
-Some of them must match the AirSim settings in configs/airsim/settings.json.
+Some of them must match the AirSim settings in configs/airsim/settings.json and sac_depth.yaml (sac_rgb.yaml).
 """
 
 TRACKER_VEHICLE = "Drone1"
@@ -24,7 +24,7 @@ FRICTION = 0.5
 
 IMAGE_SIZE = 224
 FRAME_STACK = 3
-MAX_EPISODE_STEPS = 800  # 40s at 20Hz
+MAX_EPISODE_STEPS = 300  # 15s at 20Hz
 DESIRED_DISTANCE = 3.0
-MAX_DISTANCE = 10.0
+MAX_DISTANCE = 8.0
 MIN_DISTANCE = 0.5
