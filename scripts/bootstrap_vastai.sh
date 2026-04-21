@@ -30,7 +30,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
   libvulkan1 vulkan-tools mesa-vulkan-drivers \
-  libgl1-mesa-glx libgl1-mesa-dri \
+  libgl1 libgl1-mesa-dri \
   libsdl2-2.0-0 libasound2t64 libpulse0 \
   libxrandr2 libxi6 libxinerama1 libxcursor1 libxss1 libxkbcommon0 \
   xvfb x11-utils mesa-utils \
