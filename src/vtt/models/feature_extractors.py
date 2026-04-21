@@ -1,7 +1,7 @@
 """
 Feature extractors for the asymmetric SAC policy.
 
-Actor (DepthResNet): (B, S, 1, 224, 224) depth -> per-frame ResNet-18 -> flatten -> Linear -> 512
+Actor (DepthResNet): depth frames + bbox -> per-frame ResNet-18 -> concat with bbox -> Linear -> 512
 Critic (CriticExtractor): receives relative 9D state of the target [pos, vel, acc]
 """
 
@@ -17,17 +17,10 @@ class DepthResNet(BaseFeaturesExtractor):
         super().__init__(observation_space, features_dim)
 
         image_space = observation_space["image"]
-        self.frame_stack = image_space.shape[0]
+        total_channels = image_space.shape[0]
+        self.frame_stack = total_channels // 3
 
-        # Adapted for depth input
         resnet18 = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
-
-        old_conv1 = resnet18.conv1
-        new_conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        with torch.no_grad():
-            new_conv1.weight.copy_(old_conv1.weight.mean(dim=1, keepdim=True))
-        resnet18.conv1 = new_conv1
-
         self.resnet = nn.Sequential(*list(resnet18.children())[:-1])
 
         # All layers trainable
@@ -35,23 +28,24 @@ class DepthResNet(BaseFeaturesExtractor):
             param.requires_grad = True
 
         self.linear = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(self.frame_stack * 512, features_dim),
+            nn.Linear(self.frame_stack * 512 + 4, features_dim),
             nn.ReLU(),
         )
 
-    def forward(self, images: torch.Tensor) -> torch.Tensor:
+    def forward(self, images: torch.Tensor, bbox: torch.Tensor) -> torch.Tensor:
         """
-        images: (B, S, 224, 224) — stacked depth frames.
-        Called by the actor as: extract_features(obs["image"], self.features_extractor)
+        images: (B, S*3, 224, 224) — S colormapped depth frames (3 RGB channels each)
+        bbox:   (B, 4) — relative bounding box [cx, cy, w, h]
         """
-        b, s, h, w = images.shape
+        b = images.shape[0]
+        s = self.frame_stack
 
-        x = images.reshape(b * s, 1, h, w)  # (B*S, 1, 224, 224)
+        x = images.reshape(b * s, 3, images.shape[2], images.shape[3])
 
         x = self.resnet(x)  # (B*S, 512, 1, 1)
         x = x.reshape(b, s, -1)  # (B, S, 512)
         x = torch.flatten(x, start_dim=1)  # (B, S*512)
+        x = torch.cat([x, bbox], dim=1)  # (B, S*512 + 4)
 
         return self.linear(x)  # (B, 512)
 

@@ -52,9 +52,9 @@
               "FOV_Degrees": 90
             }
           ],
-          "X": 0.25,
+          "X": 0.5,
           "Y": 0,
-          "Z": -0.1,
+          "Z": -0.3,
           "Pitch": 0,
           "Roll": 0,
           "Yaw": 0
@@ -63,7 +63,7 @@
     },
     "Target": {
       "VehicleType": "SimpleFlight",
-      "X": 3,
+      "X": 2,
       "Y": 0,
       "Z": 0
     }

@@ -37,7 +37,7 @@ from vtt.metrics.trajectory_comparison import (
     plot_trajectory_comparison,
 )
 from vtt.utils.common_utils import get_target_origin
-from vtt.metrics.constants import TRAJECTORY_PRESETS
+from vtt.metrics.constants import TRAJECTORY_EVAL_PRESETS
 
 
 def parse_args():
@@ -45,7 +45,7 @@ def parse_args():
     parser.add_argument(
         "--trajectory",
         "-t",
-        choices=list(TRAJECTORY_PRESETS.keys()) + ["keyboard"],
+        choices=list(TRAJECTORY_EVAL_PRESETS.keys()) + ["keyboard"],
         default="sinusoidal",
         help="Target trajectory preset or 'keyboard' for manual control",
     )
@@ -102,7 +102,7 @@ def main():
         client.takeoffAsync(vehicle_name=TARGET_VEHICLE).join()
         origin = get_target_origin(client)
 
-        trajectory = TRAJECTORY_PRESETS[args.trajectory](origin)
+        trajectory = TRAJECTORY_EVAL_PRESETS[args.trajectory](origin)
         print(f"Starting trajectory: {args.trajectory} (duration={args.duration}s)")
         follower = TrajectoryFollower(trajectory, TARGET_VEHICLE, dt=TS)
         follower.start()

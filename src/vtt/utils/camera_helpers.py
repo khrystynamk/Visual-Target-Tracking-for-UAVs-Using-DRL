@@ -4,7 +4,6 @@ import cv2
 
 from vtt.constants import (
     IMAGE_SIZE,
-    MAX_DISTANCE,
     TRACKER_VEHICLE,
     TARGET_MESH_NAME,
     TRACKER_CAMERA,
@@ -34,7 +33,7 @@ def capture_frame(client: airsim.MultirotorClient):
 
 def capture_depth(client) -> np.ndarray:
     """
-    Capture a single depth frame for the SAC agent. Returns (1, H, W).
+    Capture a colormapped depth frame for the SAC agent.
     """
     responses = client.simGetImages(
         [
@@ -47,14 +46,23 @@ def capture_depth(client) -> np.ndarray:
         ],
         vehicle_name=TRACKER_VEHICLE,
     )
+
+    if responses[0].width == 0 or responses[0].height == 0:
+        return np.zeros((3, IMAGE_SIZE, IMAGE_SIZE), dtype=np.float32)
+
     depth = airsim.list_to_2d_float_array(
         responses[0].image_data_float,
         responses[0].width,
         responses[0].height,
     )
-    depth = np.clip(depth, 0.0, MAX_DISTANCE) / MAX_DISTANCE
+    depth = np.log1p(depth) / np.log1p(100)
     depth = cv2.resize(depth, (IMAGE_SIZE, IMAGE_SIZE))
-    return depth[np.newaxis].astype(np.float32)
+
+    depth_uint8 = (depth * 255).astype(np.uint8)
+    colored = cv2.applyColorMap(depth_uint8, cv2.COLORMAP_INFERNO)  # (H, W, 3) BGR
+    colored = cv2.cvtColor(colored, cv2.COLOR_BGR2RGB)
+
+    return (colored.astype(np.float32) / 255.0).transpose(2, 0, 1)  # (3, H, W)
 
 
 def setup_detector(client: airsim.MultirotorClient):
@@ -101,3 +109,60 @@ def detect(client: airsim.MultirotorClient, raw_w: int, raw_h: int):
     cy = (y1 + y2) / 2.0
     area = float((x2 - x1) * (y2 - y1))
     return cx, cy, area, (x1, y1, x2, y2)
+
+
+def get_relative_bbox(
+    client: airsim.MultirotorClient,
+    raw_w: int,
+    raw_h: int,
+    image_size: int = IMAGE_SIZE,
+) -> np.ndarray:
+    det = detect(client, raw_w, raw_h)
+    if det is None:
+        return np.zeros(4, dtype=np.float32), False
+
+    cx, cy, _, (x1, y1, x2, y2) = det
+    rel_cx = cx / image_size
+    rel_cy = cy / image_size
+    rel_w = (x2 - x1) / image_size
+    rel_h = (y2 - y1) / image_size
+
+    return np.array([rel_cx, rel_cy, rel_w, rel_h], dtype=np.float32).clip(
+        0.0, 1.0
+    ), True
+
+
+def render_depth_with_bbox(
+    depth_frame: np.ndarray,
+    bbox: np.ndarray,
+    image_size: int,
+    reward: float = 0.0,
+    dist: float = 0.0,
+    frames_lost: int = 0,
+):
+    img = (depth_frame.transpose(1, 2, 0) * 255).astype(np.uint8)
+    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+
+    cx, cy, w, h = bbox
+    if w > 0 and h > 0:
+        x1 = int((cx - w / 2) * image_size)
+        y1 = int((cy - h / 2) * image_size)
+        x2 = int((cx + w / 2) * image_size)
+        y2 = int((cy + h / 2) * image_size)
+        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        cv2.circle(
+            img, (int(cx * image_size), int(cy * image_size)), 3, (0, 0, 255), -1
+        )
+
+    cv2.putText(
+        img,
+        f"r={reward:.2f} d={dist:.1f}m lost={frames_lost}",
+        (3, 12),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.3,
+        (0, 255, 0),
+        1,
+    )
+
+    cv2.imshow("Tracking (depth + bbox)", img)
+    cv2.waitKey(1)

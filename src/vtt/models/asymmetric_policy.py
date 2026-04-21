@@ -77,7 +77,8 @@ class Actor(BasePolicy):
 
     def get_action_dist_params(self, obs: th.Tensor):
         image_obs = obs["image"]
-        features = self.features_extractor(image_obs)
+        bbox = obs["bbox"]
+        features = self.features_extractor(image_obs, bbox)
         latent_pi = self.latent_pi(features)
         mean_actions = self.mu(latent_pi)
         log_std = th.clamp(self.log_std(latent_pi), LOG_STD_MIN, LOG_STD_MAX)
