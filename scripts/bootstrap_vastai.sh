@@ -30,7 +30,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
   libvulkan1 vulkan-tools mesa-vulkan-drivers \
-  libsdl2-2.0-0 libasound2 libpulse0 \
+  libsdl2-2.0-0 libasound2t64 libpulse0 \
   libxrandr2 libxi6 libxinerama1 libxcursor1 \
   unzip curl ca-certificates git netcat-openbsd tmux
 
