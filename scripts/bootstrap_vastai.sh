@@ -97,10 +97,19 @@ nc -z 127.0.0.1 41451 || {
   exit 1
 }
 
+# --- Python 3.11 venv (airsim + tornado 4.x are broken on 3.12+) ------------
+apt-get install -y --no-install-recommends software-properties-common
+add-apt-repository -y ppa:deadsnakes/ppa
+apt-get update
+apt-get install -y --no-install-recommends python3.11 python3.11-venv python3.11-dev
+
+python3.11 -m venv /opt/venv
+source /opt/venv/bin/activate
+
 # --- Python deps -------------------------------------------------------------
+pip install --upgrade pip
 pip install torch torchvision
-pip install msgpack-rpc-python
-pip install --no-build-isolation airsim
+pip install msgpack-rpc-python airsim
 pip install -r requirements.txt
 pip install -e .
 
