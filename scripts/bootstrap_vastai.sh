@@ -76,8 +76,9 @@ mkdir -p "$HOME/Documents/AirSim"
 cp configs/airsim/settings.json "$HOME/Documents/AirSim/settings.json"
 
 # --- Launch AirSim headless --------------------------------------------------
+echo "$AIRSIM_SH"
 nohup "$AIRSIM_SH" \
-    -RenderOffScreen -nosound -windowed -ResX=256 -ResY=256 \
+    -RenderOffScreen -nosound -windowed -ResX=1024 -ResY=768 \
     > /tmp/airsim.log 2>&1 &
 
 # --- Wait for RPC port -------------------------------------------------------
