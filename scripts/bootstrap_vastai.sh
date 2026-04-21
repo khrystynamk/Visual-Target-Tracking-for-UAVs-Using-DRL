@@ -98,7 +98,6 @@ nc -z 127.0.0.1 41451 || {
 }
 
 # --- Python deps -------------------------------------------------------------
-pip install --upgrade pip
 pip install torch torchvision
 pip install msgpack-rpc-python
 pip install --no-build-isolation airsim
