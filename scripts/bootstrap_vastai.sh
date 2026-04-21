@@ -107,7 +107,6 @@ python3.11 -m venv /opt/venv
 source /opt/venv/bin/activate
 
 # --- Python deps -------------------------------------------------------------
-pip install --upgrade pip "setuptools<71"
 pip install torch torchvision
 pip install msgpack-rpc-python
 pip install --no-build-isolation airsim
