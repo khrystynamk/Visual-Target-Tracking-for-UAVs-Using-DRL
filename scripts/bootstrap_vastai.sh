@@ -30,8 +30,10 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
   libvulkan1 vulkan-tools mesa-vulkan-drivers \
+  libgl1-mesa-glx libgl1-mesa-dri \
   libsdl2-2.0-0 libasound2t64 libpulse0 \
-  libxrandr2 libxi6 libxinerama1 libxcursor1 \
+  libxrandr2 libxi6 libxinerama1 libxcursor1 libxss1 libxkbcommon0 \
+  xvfb x11-utils mesa-utils \
   unzip curl ca-certificates git netcat-openbsd tmux
 
 # --- AWS CLI v2 -------------------------------------------------------------
@@ -76,11 +78,22 @@ echo "bootstrap_vastai: AirSim launcher = $AIRSIM_SH"
 mkdir -p "$HOME/Documents/AirSim"
 cp configs/airsim/settings.json "$HOME/Documents/AirSim/settings.json"
 
-# --- Launch AirSim headless (UE refuses root) --------------------------------
+# --- Launch a virtual X server for UE to render into -------------------------
+Xvfb :99 -screen 0 1280x1024x24 -ac +extension GLX +render -noreset \
+  > /tmp/xvfb.log 2>&1 &
+export DISPLAY=:99
+# Wait for Xvfb to be ready:
+for i in $(seq 1 30); do
+  if xdpyinfo -display :99 >/dev/null 2>&1; then echo "Xvfb ready"; break; fi
+  sleep 1
+done
+xdpyinfo -display :99 >/dev/null || { echo "Xvfb never came up"; tail /tmp/xvfb.log; exit 1; }
+
+# --- Launch AirSim on that virtual display, with OpenGL4 RHI -----------------
 id -u airsim &>/dev/null || useradd -m -s /bin/bash airsim
 chown -R airsim:airsim /opt/airsim "$HOME/Documents/AirSim"
-nohup runuser -u airsim -- "$AIRSIM_SH" \
-    -RenderOffScreen -nosound -windowed -ResX=1024 -ResY=768 \
+DISPLAY=:99 nohup runuser -u airsim -- "$AIRSIM_SH" \
+    -opengl4 -nosound -windowed -ResX=640 -ResY=480 \
     > /tmp/airsim.log 2>&1 &
 
 # --- Wait for RPC port -------------------------------------------------------
