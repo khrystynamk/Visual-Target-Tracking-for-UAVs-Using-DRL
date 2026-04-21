@@ -109,7 +109,8 @@ source /opt/venv/bin/activate
 # --- Python deps -------------------------------------------------------------
 pip install --upgrade pip
 pip install torch torchvision
-pip install msgpack-rpc-python airsim
+pip install msgpack-rpc-python
+pip install --no-build-isolation airsim
 pip install -r requirements.txt
 pip install -e .
 
