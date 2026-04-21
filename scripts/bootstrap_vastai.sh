@@ -57,6 +57,7 @@ CONF
 # --- Pull the AirSim binary from R2 -----------------------------------------
 mkdir -p /opt/airsim
 aws --profile r2 s3 cp "s3://${BUCKET}/${UE_PKG_KEY}" /tmp/airsim.zip
+rm -rf /opt/airsim
 unzip -q /tmp/airsim.zip -d /opt/airsim
 
 # Find the launcher script wherever it landed (names vary across AirSim
