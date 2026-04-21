@@ -77,7 +77,8 @@ mkdir -p "$HOME/Documents/AirSim"
 cp configs/airsim/settings.json "$HOME/Documents/AirSim/settings.json"
 
 # --- Launch AirSim headless --------------------------------------------------
-echo "$AIRSIM_SH"
+chmod +x /opt/airsim/LinuxBlocks1.8.1/LinuxNoEditor/Blocks.sh
+sudo chown root:root /opt/airsim/LinuxBlocks1.8.1/LinuxNoEditor/Blocks.sh
 nohup "$AIRSIM_SH" \
     -RenderOffScreen -nosound -windowed -ResX=1024 -ResY=768 \
     > /tmp/airsim.log 2>&1 &
