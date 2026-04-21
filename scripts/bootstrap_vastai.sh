@@ -110,7 +110,6 @@ source /opt/venv/bin/activate
 pip install torch torchvision
 pip install msgpack-rpc-python
 pip install --no-build-isolation airsim
-pip install -r requirements.txt
 pip install -e .
 
 # --- W&B + train -------------------------------------------------------------
