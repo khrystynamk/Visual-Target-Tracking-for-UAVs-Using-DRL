@@ -76,10 +76,10 @@ echo "bootstrap_vastai: AirSim launcher = $AIRSIM_SH"
 mkdir -p "$HOME/Documents/AirSim"
 cp configs/airsim/settings.json "$HOME/Documents/AirSim/settings.json"
 
-# --- Launch AirSim headless --------------------------------------------------
-chmod +x /opt/airsim/LinuxBlocks1.8.1/LinuxNoEditor/Blocks.sh
-sudo chown root:root /opt/airsim/LinuxBlocks1.8.1/LinuxNoEditor/Blocks.sh
-nohup "$AIRSIM_SH" \
+# --- Launch AirSim headless (UE refuses root) --------------------------------
+id -u airsim &>/dev/null || useradd -m -s /bin/bash airsim
+chown -R airsim:airsim /opt/airsim "$HOME/Documents/AirSim"
+nohup runuser -u airsim -- "$AIRSIM_SH" \
     -RenderOffScreen -nosound -windowed -ResX=1024 -ResY=768 \
     > /tmp/airsim.log 2>&1 &
 
