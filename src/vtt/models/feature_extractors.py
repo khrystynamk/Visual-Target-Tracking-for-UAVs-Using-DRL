@@ -1,8 +1,8 @@
 """
-Module for the feature extractors.
+Feature extractors for the asymmetric SAC policy.
 
-ActorExtractor: depth CNN (ResNet-18) + tracker state -> concatenated features
-CriticExtractor: reads tracker and target states
+Actor (DepthResNet): (B, S, 1, 224, 224) depth -> per-frame ResNet-18 -> flatten -> Linear -> 512
+Critic (CriticExtractor): receives relative 9D state of the target [pos, vel, acc]
 """
 
 import torch
@@ -12,62 +12,59 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 import gymnasium as gym
 
 
-class ActorExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space: gym.spaces.Dict, features_dim: int = 256):
+class DepthResNet(BaseFeaturesExtractor):
+    def __init__(self, observation_space: gym.spaces.Dict, features_dim: int = 512):
         super().__init__(observation_space, features_dim)
 
         image_space = observation_space["image"]
-        in_channels = image_space.shape[0]
-        state_dim = observation_space["actor_state"].shape[0]
+        self.frame_stack = image_space.shape[0]
 
-        resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        # Adapted for depth input
+        resnet18 = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
 
-        old_conv1 = resnet.conv1
-        new_conv1 = nn.Conv2d(
-            in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False
-        )
+        old_conv1 = resnet18.conv1
+        new_conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
         with torch.no_grad():
-            avg_weight = old_conv1.weight.mean(dim=1, keepdim=True)  # (64, 1, 7, 7)
-            new_conv1.weight.copy_(
-                avg_weight.repeat(1, in_channels, 1, 1) / in_channels
-            )
-        resnet.conv1 = new_conv1
+            new_conv1.weight.copy_(old_conv1.weight.mean(dim=1, keepdim=True))
+        resnet18.conv1 = new_conv1
 
-        self.backbone = nn.Sequential(*list(resnet.children())[:-1])  # (B, 512, 1, 1)
+        self.resnet = nn.Sequential(*list(resnet18.children())[:-1])
 
-        for param in self.backbone.parameters():
-            param.requires_grad = False
-
-        # Unfreeze conv1 (modified) + layer4
-        for param in new_conv1.parameters():
-            param.requires_grad = True
-        for param in resnet.layer4.parameters():
+        # All layers trainable
+        for param in self.resnet.parameters():
             param.requires_grad = True
 
-        cnn_dim = 512
-        self.projection = nn.Sequential(
-            nn.Linear(cnn_dim + state_dim, features_dim),
+        self.linear = nn.Sequential(
+            nn.Flatten(),
+            nn.Linear(self.frame_stack * 512, features_dim),
             nn.ReLU(),
         )
 
-    def forward(self, observations: dict) -> torch.Tensor:
-        images = observations["image"]
-        state = observations["actor_state"]
+    def forward(self, images: torch.Tensor) -> torch.Tensor:
+        """
+        images: (B, S, 224, 224) — stacked depth frames.
+        Called by the actor as: extract_features(obs["image"], self.features_extractor)
+        """
+        b, s, h, w = images.shape
 
-        x = self.backbone(images)  # (B, 512, 1, 1)
-        x = x.reshape(x.size(0), -1)  # (B, 512)
-        x = torch.cat([x, state], dim=1)  # (B, 518)
-        return self.projection(x)  # (B, 256)
+        x = images.reshape(b * s, 1, h, w)  # (B*S, 1, 224, 224)
+
+        x = self.resnet(x)  # (B*S, 512, 1, 1)
+        x = x.reshape(b, s, -1)  # (B, S, 512)
+        x = torch.flatten(x, start_dim=1)  # (B, S*512)
+
+        return self.linear(x)  # (B, 512)
 
 
 class CriticExtractor(BaseFeaturesExtractor):
-    def __init__(self, observation_space: gym.spaces.Dict, features_dim: int = 64):
-        super().__init__(observation_space, features_dim)
-        state_dim = observation_space["critic_state"].shape[0]  # 12
-        self.net = nn.Sequential(
-            nn.Linear(state_dim, features_dim),
-            nn.ReLU(),
-        )
+    """
+    Passthrough extractor for the critic — receives raw state tensor.
+    Called by the critic as: extract_features(obs["critic_state"], self.features_extractor)
+    """
 
-    def forward(self, observations: dict) -> torch.Tensor:
-        return self.net(observations["critic_state"])
+    def __init__(self, observation_space: gym.spaces.Dict):
+        state_dim = observation_space["critic_state"].shape[0]
+        super().__init__(observation_space, features_dim=state_dim)
+
+    def forward(self, state: torch.Tensor) -> torch.Tensor:
+        return state

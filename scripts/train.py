@@ -11,7 +11,6 @@ import os
 
 import yaml
 import torch
-import airsim
 import wandb
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
@@ -54,10 +53,7 @@ def main():
     os.makedirs(save_dir, exist_ok=True)
 
     if args.no_render:
-        client = airsim.MultirotorClient()
-        client.confirmConnection()
-        client.simEnableWeather(False)  # ensure weather API is off
-        client.simSetViewMode(6)  # 6 = NoDisplay
+        print("Note: --no-render requires ViewMode: NoDisplay in settings.json")
 
     if torch.backends.mps.is_available():
         device = "mps"
@@ -120,8 +116,6 @@ def main():
     )
 
     print(f"Starting training: {sac_cfg['total_timesteps']} timesteps")
-    modality = "depth" if env_cfg["use_depth"] else "RGB"
-    print(f"Input modality: {modality}")
 
     try:
         model.learn(

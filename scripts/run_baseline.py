@@ -30,49 +30,14 @@ from vtt.utils.camera_helpers import (
     detect,
 )
 from vtt.control.p_controller import compute_control
-from vtt.metrics.scripted_trajectories import (
-    SinusoidalTrajectory,
-    CircularTrajectory,
-    FigureEightTrajectory,
-)
 from vtt.target.trajectory_follower import TrajectoryFollower
 from vtt.metrics.trajectory_comparison import (
     TrajectoryRecord,
     compute_tracking_errors,
     plot_trajectory_comparison,
 )
-
-
-def _get_target_origin(client) -> np.ndarray:
-    pose = client.simGetVehiclePose("Target")
-    p = pose.position
-    return np.array([p.x_val, p.y_val, -p.z_val])
-
-
-TRAJECTORY_PRESETS = {
-    "sinusoidal": lambda origin: SinusoidalTrajectory(
-        amplitudes=(3.0, 2.0, 1.0),
-        frequencies=(0.08, 0.1, 0.05),
-        origin=origin,
-    ),
-    "helix": lambda origin: CircularTrajectory(
-        radius=4.0,
-        angular_speed=0.25,
-        vertical_amplitude=1.5,
-        vertical_frequency=0.04,
-        origin=origin,
-    ),
-    "circular": lambda origin: CircularTrajectory(
-        radius=4.0,
-        angular_speed=0.25,
-        origin=origin,
-    ),
-    "figure_eight": lambda origin: FigureEightTrajectory(
-        size=4.0,
-        speed=0.08,
-        origin=origin,
-    ),
-}
+from vtt.utils.common_utils import get_target_origin
+from vtt.metrics.constants import TRAJECTORY_PRESETS
 
 
 def parse_args():
@@ -135,14 +100,12 @@ def main():
         client.enableApiControl(True, TARGET_VEHICLE)
         client.armDisarm(True, TARGET_VEHICLE)
         client.takeoffAsync(vehicle_name=TARGET_VEHICLE).join()
-        origin = _get_target_origin(client)
+        origin = get_target_origin(client)
 
         trajectory = TRAJECTORY_PRESETS[args.trajectory](origin)
         print(f"Starting trajectory: {args.trajectory} (duration={args.duration}s)")
         follower = TrajectoryFollower(trajectory, TARGET_VEHICLE, dt=TS)
         follower.start()
-
-    time.sleep(0.5)
 
     metrics = Metrics()
     tracker_record = TrajectoryRecord(name="Tracker")

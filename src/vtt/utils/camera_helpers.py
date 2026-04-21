@@ -3,6 +3,8 @@ import numpy as np
 import cv2
 
 from vtt.constants import (
+    IMAGE_SIZE,
+    MAX_DISTANCE,
     TRACKER_VEHICLE,
     TARGET_MESH_NAME,
     TRACKER_CAMERA,
@@ -28,6 +30,31 @@ def capture_frame(client: airsim.MultirotorClient):
     img1d = np.frombuffer(responses[0].image_data_uint8, dtype=np.uint8)
     frame = img1d.reshape(responses[0].height, responses[0].width, 3)
     return cv2.resize(frame, (IMG_W, IMG_H))
+
+
+def capture_depth(client) -> np.ndarray:
+    """
+    Capture a single depth frame for the SAC agent. Returns (1, H, W).
+    """
+    responses = client.simGetImages(
+        [
+            airsim.ImageRequest(
+                TRACKER_CAMERA,
+                airsim.ImageType.DepthPerspective,
+                pixels_as_float=True,
+                compress=False,
+            ),
+        ],
+        vehicle_name=TRACKER_VEHICLE,
+    )
+    depth = airsim.list_to_2d_float_array(
+        responses[0].image_data_float,
+        responses[0].width,
+        responses[0].height,
+    )
+    depth = np.clip(depth, 0.0, MAX_DISTANCE) / MAX_DISTANCE
+    depth = cv2.resize(depth, (IMAGE_SIZE, IMAGE_SIZE))
+    return depth[np.newaxis].astype(np.float32)
 
 
 def setup_detector(client: airsim.MultirotorClient):

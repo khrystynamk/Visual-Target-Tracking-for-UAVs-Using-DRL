@@ -2,7 +2,6 @@
 # Input: 3 stacked depth frames (3, 224, 224)
 
 env:
-  use_depth: true
   image_size: 224
   frame_stack: 3
   max_episode_steps: 300
@@ -14,8 +13,8 @@ env:
 
 sac:
   total_timesteps: 200000
-  learning_rate: 0.0001
-  buffer_size: 50000
+  learning_rate: 0.0003
+  buffer_size: 10000
   batch_size: 256
   learning_starts: 1000
   train_freq: 1

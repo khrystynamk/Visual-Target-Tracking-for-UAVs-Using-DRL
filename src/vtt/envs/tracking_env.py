@@ -1,13 +1,8 @@
 """
 Gymnasium environment for DRL-based visual target tracking in AirSim.
 
-Actor:  depth images + tracker state (velocity + orientation) → CNN + MLP → action
-Critic: relative state + tracker state (privileged) → MLP → Q-value
-
-Observation space:
-  "image":        (C, 224, 224) — stacked depth/RGB frames
-  "actor_state":  (6,) — tracker [vx, vy, vz, roll, pitch, yaw] in body frame
-  "critic_state": (12,) — relative [pos(3), vel(3)] + tracker [pos(3), vel(3)]
+Actor:  depth images only → CNN → MLP → action
+Critic: relative target state (privileged) → MLP → Q-value
 """
 
 import gymnasium as gym
@@ -33,6 +28,32 @@ from vtt.metrics.scripted_trajectories import SinusoidalTrajectory
 from vtt.target.trajectory_follower import TrajectoryFollower
 
 
+def _quat_to_rotation_matrix(q) -> np.ndarray:
+    """
+    Convert AirSim quaternion to a rotation matrix.
+    """
+    q0, q1, q2, q3 = q.w_val, q.x_val, q.y_val, q.z_val
+    return np.array(
+        [
+            [
+                2 * (q0 * q0 + q1 * q1) - 1,
+                2 * (q1 * q2 - q0 * q3),
+                2 * (q1 * q3 + q0 * q2),
+            ],
+            [
+                2 * (q1 * q2 + q0 * q3),
+                2 * (q0 * q0 + q2 * q2) - 1,
+                2 * (q2 * q3 - q0 * q1),
+            ],
+            [
+                2 * (q1 * q3 - q0 * q2),
+                2 * (q2 * q3 + q0 * q1),
+                2 * (q0 * q0 + q3 * q3) - 1,
+            ],
+        ]
+    )
+
+
 class TrackingEnv(gym.Env):
     metadata = {"render_modes": ["human"]}
 
@@ -46,7 +67,6 @@ class TrackingEnv(gym.Env):
         desired_distance: float = DESIRED_DISTANCE,
         max_distance: float = MAX_DISTANCE,
         min_distance: float = MIN_DISTANCE,
-        use_depth: bool = True,
         render_mode: str | None = None,
     ):
         super().__init__()
@@ -59,32 +79,23 @@ class TrackingEnv(gym.Env):
         self.desired_distance = desired_distance
         self.max_distance = max_distance
         self.min_distance = min_distance
-        self.use_depth = use_depth
         self.render_mode = render_mode
 
-        channels_per_frame = 1 if use_depth else 3
-        total_channels = frame_stack * channels_per_frame
-
+        # (frame_stack, H, W) — stacked depth frames.
         self.observation_space = gym.spaces.Dict(
             {
+                # Depth frames
                 "image": gym.spaces.Box(
                     0.0,
                     1.0,
-                    shape=(total_channels, image_size, image_size),
+                    shape=(frame_stack, image_size, image_size),
                     dtype=np.float32,
                 ),
-                # Tracker's [vx, vy, vz, roll, pitch, yaw]
-                "actor_state": gym.spaces.Box(
-                    -np.inf,
-                    np.inf,
-                    shape=(6,),
-                    dtype=np.float32,
-                ),
-                # Privileged states: target [pos(3), vel(3)] + tracker [pos(3), vel(3)]
+                # Relative target state [pos(3), vel(3), acc(3)]
                 "critic_state": gym.spaces.Box(
                     -np.inf,
                     np.inf,
-                    shape=(12,),
+                    shape=(9,),
                     dtype=np.float32,
                 ),
             }
@@ -113,15 +124,15 @@ class TrackingEnv(gym.Env):
 
         if self._follower is not None:
             self._follower.stop()
+            self._follower = None
 
         self.client.reset()
 
-        self.client.enableApiControl(True, TRACKER_VEHICLE)
-        self.client.armDisarm(True, TRACKER_VEHICLE)
-        self.client.takeoffAsync(vehicle_name=TRACKER_VEHICLE).join()
+        for vehicle in [TRACKER_VEHICLE, TARGET_VEHICLE]:
+            self.client.enableApiControl(True, vehicle)
+            self.client.armDisarm(True, vehicle)
 
-        self.client.enableApiControl(True, TARGET_VEHICLE)
-        self.client.armDisarm(True, TARGET_VEHICLE)
+        self.client.takeoffAsync(vehicle_name=TRACKER_VEHICLE).join()
         self.client.takeoffAsync(vehicle_name=TARGET_VEHICLE).join()
 
         target_pose = self.client.simGetVehiclePose(TARGET_VEHICLE)
@@ -178,8 +189,7 @@ class TrackingEnv(gym.Env):
         obs = self._get_obs()
 
         rel_pos = obs["critic_state"][:3]
-        rel_vel = obs["critic_state"][3:6]
-        reward, done = self._compute_reward(rel_pos, rel_vel, action)
+        reward, done = self._compute_reward(rel_pos)
 
         truncated = self._step_count >= self.max_episode_steps
 
@@ -190,46 +200,32 @@ class TrackingEnv(gym.Env):
 
         return obs, reward, done, truncated, info
 
-    def _capture_image(self) -> np.ndarray:
-        if self.use_depth:
-            responses = self.client.simGetImages(
-                [
-                    airsim.ImageRequest(
-                        TRACKER_CAMERA,
-                        airsim.ImageType.DepthPerspective,
-                        pixels_as_float=True,
-                        compress=False,
-                    ),
-                ],
-                vehicle_name=TRACKER_VEHICLE,
-            )
-            depth = airsim.list_to_2d_float_array(
-                responses[0].image_data_float,
-                responses[0].width,
-                responses[0].height,
-            )
-            depth = np.clip(depth, 0.0, self.max_distance) / self.max_distance
-            depth = cv2.resize(depth, (self.image_size, self.image_size))
-            return depth[np.newaxis].astype(np.float32)
-        else:
-            responses = self.client.simGetImages(
-                [
-                    airsim.ImageRequest(
-                        TRACKER_CAMERA,
-                        airsim.ImageType.Scene,
-                        False,
-                        False,
-                    ),
-                ],
-                vehicle_name=TRACKER_VEHICLE,
-            )
-            img1d = np.frombuffer(responses[0].image_data_uint8, dtype=np.uint8)
-            bgr = img1d.reshape(responses[0].height, responses[0].width, 3)
-            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-            rgb = cv2.resize(rgb, (self.image_size, self.image_size))
-            return (rgb.astype(np.float32) / 255.0).transpose(2, 0, 1)
+    def _capture_image(self):
+        responses = self.client.simGetImages(
+            [
+                airsim.ImageRequest(
+                    TRACKER_CAMERA,
+                    airsim.ImageType.DepthPerspective,
+                    pixels_as_float=True,
+                    compress=False,
+                ),
+            ],
+            vehicle_name=TRACKER_VEHICLE,
+        )
 
-    def _get_obs(self) -> dict:
+        if responses[0].width == 0 or responses[0].height == 0:
+            return np.zeros((1, self.image_size, self.image_size), dtype=np.float32)
+
+        depth = airsim.list_to_2d_float_array(
+            responses[0].image_data_float,
+            responses[0].width,
+            responses[0].height,
+        )
+        depth = np.clip(depth, 0.0, self.max_distance) / self.max_distance
+        depth = cv2.resize(depth, (self.image_size, self.image_size))
+        return depth[np.newaxis].astype(np.float32)  # (1, H, W)
+
+    def _get_obs(self):
         tracker = self.client.getMultirotorState(vehicle_name=TRACKER_VEHICLE)
         target_pose = self.client.simGetVehiclePose(TARGET_VEHICLE)
         target_state = self.client.getMultirotorState(vehicle_name=TARGET_VEHICLE)
@@ -248,10 +244,6 @@ class TrackingEnv(gym.Env):
                 tracker.kinematics_estimated.linear_velocity.z_val,
             ]
         )
-        roll, pitch, yaw = airsim.to_eularian_angles(
-            tracker.kinematics_estimated.orientation
-        )
-
         tgt_pos = np.array(
             [
                 target_pose.position.x_val,
@@ -266,50 +258,39 @@ class TrackingEnv(gym.Env):
                 target_state.kinematics_estimated.linear_velocity.z_val,
             ]
         )
-
-        cos_y, sin_y = np.cos(yaw), np.sin(yaw)
-        R = np.array(
+        t_acc = np.array(
             [
-                [cos_y, sin_y, 0],
-                [-sin_y, cos_y, 0],
-                [0, 0, 1],
+                tracker.kinematics_estimated.linear_acceleration.x_val,
+                tracker.kinematics_estimated.linear_acceleration.y_val,
+                tracker.kinematics_estimated.linear_acceleration.z_val,
             ]
         )
+        tgt_acc = np.array(
+            [
+                target_state.kinematics_estimated.linear_acceleration.x_val,
+                target_state.kinematics_estimated.linear_acceleration.y_val,
+                target_state.kinematics_estimated.linear_acceleration.z_val,
+            ]
+        )
+
+        q = tracker.kinematics_estimated.orientation
+        R = _quat_to_rotation_matrix(q).T
 
         rel_pos = R @ (tgt_pos - t_pos)
         rel_vel = R @ (tgt_vel - t_vel)
-        body_vel = R @ t_vel
+        rel_acc = R @ (tgt_acc - t_acc)
 
-        actor_state = np.array(
-            [
-                body_vel[0],
-                body_vel[1],
-                body_vel[2],
-                roll,
-                pitch,
-                yaw,
-            ],
-            dtype=np.float32,
-        )
-
-        critic_state = np.concatenate(
-            [
-                rel_pos,
-                rel_vel,
-                t_pos,
-                t_vel,
-            ]
-        ).astype(np.float32)
+        # 9D relative target state
+        critic_state = np.concatenate([rel_pos, rel_vel, rel_acc]).astype(np.float32)
 
         stacked = np.concatenate(self._frame_buffer, axis=0)
 
         return {
             "image": stacked,
-            "actor_state": actor_state,
             "critic_state": critic_state,
         }
 
-    def _compute_reward(self, relative_pos, relative_vel, action):
+    def _compute_reward(self, relative_pos):
         x, y, z = relative_pos
         dist = np.linalg.norm(relative_pos)
 
@@ -317,22 +298,22 @@ class TrackingEnv(gym.Env):
             x = 0.01
 
         fov_half = np.pi / 4
-        y_err = abs(np.arctan2(y, x)) / fov_half
-        z_err = abs(np.arctan2(z, x)) / fov_half
-        d_err = abs(dist - self.desired_distance) / self.desired_distance
+        # Angular errors
+        y_err = abs(np.arctan(y / x) / fov_half)
+        z_err = abs(np.arctan(z / x) / fov_half)
+        x_err = abs(x - self.desired_distance)
 
-        r_track = max(0, 1 - y_err) * max(0, 1 - z_err) * max(0, 1 - d_err)
+        # Per-axis rewards
+        y_rew = max(0, 1 - y_err)
+        z_rew = max(0, 1 - z_err)
+        x_rew = max(0, 1 - x_err)
 
-        vel_mag = np.linalg.norm(relative_vel)
-        act_mag = np.linalg.norm(action)
-        r_vel = -0.3 * vel_mag / (1 + vel_mag)
-        r_act = -0.1 * act_mag / (1 + act_mag)
-
-        reward = r_track + r_vel + r_act
+        r_track = (x_rew * y_rew * z_rew) ** (1 / 3)
+        reward = r_track * (300 / self.max_episode_steps)
 
         done = bool(dist > self.max_distance or dist < self.min_distance)
         if done:
-            reward = -10.0
+            reward = -10.0 / (300 / self.max_episode_steps)
 
         return float(reward), done
 

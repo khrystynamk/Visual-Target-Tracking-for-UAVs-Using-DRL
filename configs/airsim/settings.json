@@ -19,7 +19,7 @@
     {
       "WindowID": 2,
       "CameraName": "front_center",
-      "ImageType": 3, // use this for agent input
+      "ImageType": 3,
       "VehicleName": "Drone1",
       "Visible": true
     }
