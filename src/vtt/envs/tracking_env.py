@@ -47,6 +47,18 @@ def rpc_timeout(seconds: int = RPC_TIMEOUT_S):
     """SIGALRM-based timeout for AirSim RPC calls (Linux only)."""
 
     def _handler(_sig, _frame):
+        # The alarm fires while tornado's IOLoop.start() is running inside
+        # msgpack-rpc.  Force-clear its _running flag so the next AirSim
+        # client call doesn't die with "IOLoop is already running".
+        try:
+            import tornado.ioloop
+
+            loop = tornado.ioloop.IOLoop.current(instance=False)
+            if loop is not None:
+                loop._running = False
+                loop.stop()
+        except Exception:
+            pass
         raise AirSimTimeout(f"AirSim RPC timed out after {seconds}s")
 
     old = signal.signal(signal.SIGALRM, _handler)
