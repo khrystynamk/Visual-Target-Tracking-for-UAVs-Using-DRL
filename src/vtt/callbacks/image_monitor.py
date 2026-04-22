@@ -116,9 +116,15 @@ class ImageMonitorCallback(BaseCallback):
     def _r2_sync(self) -> None:
         """Batch-sync the local image_samples dir to R2."""
         cmd = [
-            "aws", "--profile", "r2", "s3", "sync",
-            str(self.save_dir), self.r2_prefix,
-            "--exclude", "*.npy",  # only PNGs — npy files are large
+            "aws",
+            "--profile",
+            "r2",
+            "s3",
+            "sync",
+            str(self.save_dir),
+            self.r2_prefix,
+            "--exclude",
+            "*.npy",
         ]
         print(f"ImageMonitor: syncing PNGs to {self.r2_prefix}")
         subprocess.run(cmd, capture_output=True, timeout=60)

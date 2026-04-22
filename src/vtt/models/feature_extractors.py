@@ -49,7 +49,9 @@ class DepthResNet(BaseFeaturesExtractor):
                 raw_depth_batch[i].cpu().numpy(), target_size=224
             )
             preprocessed.append(tensor.squeeze(0))
-        return torch.stack(preprocessed).to(device=raw_depth_batch.device, dtype=torch.float32)
+        return torch.stack(preprocessed).to(
+            device=raw_depth_batch.device, dtype=torch.float32
+        )
 
     def forward(self, images: torch.Tensor, bbox: torch.Tensor) -> torch.Tensor:
         b = images.shape[0]

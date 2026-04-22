@@ -176,12 +176,14 @@ class TrackingEnv(gym.Env):
 
         try:
             with rpc_timeout(30):
+                self.client.simPause(True)
                 self.client.reset()
 
                 for vehicle in [TRACKER_VEHICLE, TARGET_VEHICLE]:
                     self.client.enableApiControl(True, vehicle)
                     self.client.armDisarm(True, vehicle)
 
+                self.client.simPause(False)
                 self.client.takeoffAsync(vehicle_name=TRACKER_VEHICLE).join()
                 self.client.takeoffAsync(vehicle_name=TARGET_VEHICLE).join()
 
