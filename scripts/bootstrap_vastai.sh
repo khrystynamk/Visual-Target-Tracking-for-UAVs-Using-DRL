@@ -137,6 +137,7 @@ pip install --no-build-isolation airsim
 
 # --- DeFM (Depth Foundation Model) ------------------------------------------
 pip install huggingface_hub omegaconf
+rm -rf /opt/defm
 git clone https://github.com/leggedrobotics/defm.git /opt/defm
 pip install -e /opt/defm --no-deps  # --no-deps to avoid tornado conflict
 
