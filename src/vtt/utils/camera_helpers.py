@@ -31,9 +31,10 @@ def capture_frame(client: airsim.MultirotorClient):
     return cv2.resize(frame, (IMG_W, IMG_H))
 
 
-def capture_depth(client) -> np.ndarray:
+def capture_depth_raw(client) -> np.ndarray:
     """
-    Capture a colormapped depth frame for the SAC agent.
+    Capture raw depth in meters from AirSim. Returns (H, W) float32.
+    No normalization — DeFM's preprocess_depth_image handles that.
     """
     responses = client.simGetImages(
         [
@@ -48,21 +49,14 @@ def capture_depth(client) -> np.ndarray:
     )
 
     if responses[0].width == 0 or responses[0].height == 0:
-        return np.zeros((3, IMAGE_SIZE, IMAGE_SIZE), dtype=np.float32)
+        return np.zeros((IMAGE_SIZE, IMAGE_SIZE), dtype=np.float32)
 
     depth = airsim.list_to_2d_float_array(
         responses[0].image_data_float,
         responses[0].width,
         responses[0].height,
     )
-    depth = np.log1p(depth) / np.log1p(100)
-    depth = cv2.resize(depth, (IMAGE_SIZE, IMAGE_SIZE))
-
-    depth_uint8 = (depth * 255).astype(np.uint8)
-    colored = cv2.applyColorMap(depth_uint8, cv2.COLORMAP_INFERNO)  # (H, W, 3) BGR
-    colored = cv2.cvtColor(colored, cv2.COLOR_BGR2RGB)
-
-    return (colored.astype(np.float32) / 255.0).transpose(2, 0, 1)  # (3, H, W)
+    return depth.astype(np.float32)  # raw meters, (H, W)
 
 
 def setup_detector(client: airsim.MultirotorClient):
@@ -140,8 +134,16 @@ def render_depth_with_bbox(
     dist: float = 0.0,
     frames_lost: int = 0,
 ):
-    img = (depth_frame.transpose(1, 2, 0) * 255).astype(np.uint8)
-    img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    if depth_frame.ndim == 3 and depth_frame.shape[0] == 3:
+        img = (depth_frame.transpose(1, 2, 0) * 255).astype(np.uint8)
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+    else:
+        if depth_frame.ndim == 1:
+            return
+        d = depth_frame.squeeze()  # ensure (H, W)
+        d = np.log1p(d) / np.log1p(100)  # log scale to [0, 1]
+        d = (d * 255).clip(0, 255).astype(np.uint8)
+        img = cv2.applyColorMap(d, cv2.COLORMAP_INFERNO)
 
     cx, cy, w, h = bbox
     if w > 0 and h > 0:

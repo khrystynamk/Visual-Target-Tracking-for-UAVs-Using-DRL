@@ -1,8 +1,8 @@
 """
 Gymnasium environment for DRL-based visual target tracking in AirSim.
 
-Actor:  depth images only → CNN → MLP → action
-Critic: relative target state (privileged) → MLP → Q-value
+Actor:  depth images only -> CNN -> MLP -> action
+Critic: relative target state (privileged) -> MLP -> Q-value
 """
 
 import gymnasium as gym
@@ -24,7 +24,7 @@ from vtt.constants import (
 )
 from vtt.target.trajectory_follower import TrajectoryFollower
 from vtt.utils.camera_helpers import (
-    capture_depth,
+    capture_depth_raw,
     setup_detector,
     get_raw_camera_resolution,
     get_relative_bbox,
@@ -90,11 +90,11 @@ class TrackingEnv(gym.Env):
 
         self.observation_space = gym.spaces.Dict(
             {
-                # Stacked colormapped depth frames (frame_stack * 3, H, W)
+                # Stacked raw depth frames in meters (frame_stack, H, W)
                 "image": gym.spaces.Box(
                     0.0,
-                    1.0,
-                    shape=(frame_stack * 3, image_size, image_size),
+                    np.inf,
+                    shape=(frame_stack, image_size, image_size),
                     dtype=np.float32,
                 ),
                 # Relative bbox from oracle detector [cx, cy, w, h] normalized to [0,1]
@@ -166,7 +166,7 @@ class TrackingEnv(gym.Env):
 
         self._frames_without_detection = 0
 
-        frame = capture_depth(self.client)
+        frame = capture_depth_raw(self.client)[np.newaxis]  # (1, H, W)
         self._frame_buffer = [frame] * self.frame_stack
 
         obs = self._get_obs()
@@ -198,7 +198,7 @@ class TrackingEnv(gym.Env):
             vehicle_name=TRACKER_VEHICLE,
         )
 
-        frame = capture_depth(self.client)
+        frame = capture_depth_raw(self.client)[np.newaxis]  # (1, H, W)
         self._frame_buffer.append(frame)
         self._frame_buffer.pop(0)
 
@@ -304,7 +304,7 @@ class TrackingEnv(gym.Env):
     def _render_cv(self, obs, reward):
         dist = float(np.linalg.norm(obs["critic_state"][:3]))
         render_depth_with_bbox(
-            obs["image"][-3:],
+            obs["image"][-1],
             obs["bbox"],
             self.image_size,
             reward=reward,
@@ -314,7 +314,7 @@ class TrackingEnv(gym.Env):
 
     def _compute_reward(self, relative_pos):
         x, y, z = relative_pos
-        dist = np.linalg.norm(relative_pos)
+        dist = abs(np.linalg.norm(relative_pos))
 
         if abs(x) < 0.01:
             x = 0.01
@@ -323,7 +323,7 @@ class TrackingEnv(gym.Env):
         # Angular errors
         y_err = abs(np.arctan(y / x) / fov_half)
         z_err = abs(np.arctan(z / x) / fov_half)
-        x_err = abs(x - self.desired_distance) / self.desired_distance
+        x_err = abs(x - self.desired_distance)
 
         # Per-axis rewards
         y_rew = max(0, 1 - y_err)
