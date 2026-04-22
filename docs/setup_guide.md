@@ -39,9 +39,21 @@ pip install msgpack-rpc-python
 pip install --no-build-isolation airsim
 ```
 
-## 5. Install the Project
+## 5. Install DeFM
+
+DeFM provides the pretrained depth feature extractor:
 
 ```bash
+pip install huggingface_hub omegaconf
+git clone https://github.com/leggedrobotics/defm.git
+cd defm
+pip install -e . --no-deps
+```
+
+## 6. Install the Project
+
+```bash
+cd ~/Documents/Thesis/Visual-Target-Tracking-for-UAVs-Using-DRL
 pip install -e .
 ```
 
