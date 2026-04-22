@@ -100,7 +100,7 @@ chown -R airsim:airsim /opt/airsim "$HOME/Documents/AirSim"
 # DISPLAY=:99 nohup runuser -u airsim -- "$AIRSIM_SH" \
 #     -opengl4 -nosound -windowed -ResX=640 -ResY=480 \
 #     > /tmp/airsim.log 2>&1 &
-DISPLAY=:99 nohup "$AIRSIM_SH" \
+DISPLAY=:99 nohup runuser -u airsim -- "$AIRSIM_SH" \
     -settings="$SETTINGS_PATH" \
     -opengl4 \
     -windowed -ResX=640 -ResY=480 \
