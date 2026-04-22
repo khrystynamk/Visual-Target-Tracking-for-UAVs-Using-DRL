@@ -12,11 +12,17 @@
 #   CONFIG       - training config path (default: configs/drl/sac_depth.yaml)
 #   UE_PKG_KEY   - R2 key for the AirSim zip (default: ue-packages/Blocks.zip)
 #   BUCKET       - R2 bucket (default: vtt-uav-artifacts)
+#   RUN_ID       - R2 run identifier (default: derived from config's wandb.name)
+#   RESUME       - "auto" to resume from R2, "off" to start fresh (default: auto)
+#   R2_SYNC      - "1" to enable R2 checkpoint sync (default: 1)
 set -euxo pipefail
 
 : "${CONFIG:=configs/drl/sac_depth.yaml}"
 : "${UE_PKG_KEY:=ue-packages/Blocks.zip}"
 : "${BUCKET:=vtt-uav-artifacts}"
+: "${RUN_ID:=}"
+: "${RESUME:=auto}"
+: "${R2_SYNC:=1}"
 
 for v in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_ACCOUNT_ID WANDB_API_KEY; do
   if [ -z "${!v:-}" ]; then
@@ -103,7 +109,7 @@ chown -R airsim:airsim /opt/airsim "$HOME/Documents/AirSim"
 DISPLAY=:99 nohup runuser -u airsim -- "$AIRSIM_SH" \
     -settings="$SETTINGS_PATH" \
     -opengl4 \
-    -windowed -ResX=640 -ResY=480 \
+    -windowed -ResX=224 -ResY=224 \
     -nosound -unattended -nosplash \
     > /tmp/airsim.log 2>&1 &
 
@@ -147,5 +153,25 @@ pip install -e .
 # --- W&B + train -------------------------------------------------------------
 wandb login "$WANDB_API_KEY"
 
+# --- Build training command ---------------------------------------------------
+TRAIN_CMD=(python scripts/train.py --config "$CONFIG")
+
+if [ "$RESUME" = "auto" ]; then
+  TRAIN_CMD+=(--resume auto)
+elif [ "$RESUME" != "off" ] && [ -n "$RESUME" ]; then
+  TRAIN_CMD+=(--resume "$RESUME")
+fi
+
+if [ "$R2_SYNC" = "1" ]; then
+  TRAIN_CMD+=(--r2-sync)
+fi
+
+if [ -n "$RUN_ID" ]; then
+  TRAIN_CMD+=(--run-id "$RUN_ID")
+fi
+
+# Always monitor images — catches dead renderers early
+TRAIN_CMD+=(--image-monitor)
+
 # Training runs in the foreground so vast.ai's onstart log shows it.
-exec python scripts/train.py --config "$CONFIG"
+exec "${TRAIN_CMD[@]}"

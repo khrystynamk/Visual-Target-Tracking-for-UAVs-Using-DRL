@@ -24,7 +24,9 @@ class DepthResNet(BaseFeaturesExtractor):
         self.frame_stack = image_space.shape[0]
 
         self.defm = torch.hub.load(
-            "leggedrobotics/defm:main", "defm_resnet18", pretrained=True,
+            "leggedrobotics/defm:main",
+            "defm_resnet18",
+            pretrained=True,
             trust_repo=True,
         )
 

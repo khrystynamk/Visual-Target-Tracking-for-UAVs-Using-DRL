@@ -8,6 +8,8 @@ Usage:
 
 import argparse
 import os
+import signal
+import subprocess
 
 import yaml
 import torch
@@ -46,16 +48,76 @@ def main():
         "--resume",
         type=str,
         default=None,
-        help="Path to checkpoint .zip to resume training from",
+        help="Path to checkpoint .zip, or 'auto' to download latest from R2",
+    )
+    parser.add_argument(
+        "--r2-sync",
+        action="store_true",
+        help="Enable periodic checkpoint upload to Cloudflare R2",
+    )
+    parser.add_argument(
+        "--run-id",
+        type=str,
+        default=None,
+        help="R2 run identifier (default: wandb name from config)",
+    )
+    parser.add_argument(
+        "--image-monitor",
+        action="store_true",
+        help="Log depth image stats + sample frames to W&B and disk",
     )
     args = parser.parse_args()
+
+    # Convert SIGTERM to KeyboardInterrupt so the finally block runs
+    def _sigterm_handler(_sig, _frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, _sigterm_handler)
 
     cfg = load_config(args.config)
     env_cfg = cfg["env"]
     sac_cfg = cfg["sac"]
     save_dir = cfg["save_dir"]
+    run_id = args.run_id or cfg["wandb"]["name"]
 
     os.makedirs(save_dir, exist_ok=True)
+
+    # --- Auto-resume from R2 --------------------------------------------------
+    if args.resume == "auto":
+        resume_dir = os.path.join(save_dir, "_r2_resume")
+        os.makedirs(resume_dir, exist_ok=True)
+        r2_base = f"s3://vtt-uav-artifacts/runs/{run_id}/latest"
+        model_dest = os.path.join(resume_dir, "model.zip")
+
+        result = subprocess.run(
+            ["aws", "--profile", "r2", "s3", "cp", f"{r2_base}/model.zip", model_dest],
+            capture_output=True,
+            timeout=120,
+        )
+        if result.returncode == 0:
+            args.resume = model_dest
+            # Also try replay buffer (training works without it)
+            replay_dest = os.path.join(resume_dir, "model_replay_buffer.pkl")
+            rb = subprocess.run(
+                [
+                    "aws",
+                    "--profile",
+                    "r2",
+                    "s3",
+                    "cp",
+                    f"{r2_base}/replay_buffer.pkl",
+                    replay_dest,
+                ],
+                capture_output=True,
+                timeout=300,
+            )
+            if rb.returncode == 0:
+                print("Auto-resume: downloaded model + replay buffer from R2")
+            else:
+                print("Auto-resume: downloaded model from R2 (no replay buffer found)")
+        else:
+            print("Auto-resume: no checkpoint found in R2, starting fresh")
+            args.resume = None
 
     if args.no_render:
         print("Note: --no-render requires ViewMode: NoDisplay in settings.json")
@@ -122,12 +184,35 @@ def main():
         name_prefix="sac",
     )
 
+    r2_callback = None
+    if args.r2_sync:
+        from vtt.callbacks.r2_sync import R2SyncCallback
+
+        r2_callback = R2SyncCallback(
+            run_id=run_id,
+            save_dir=save_dir,
+            upload_freq=cfg.get("r2_upload_freq", 5000),
+        )
+
+    callbacks = [eval_callback, checkpoint_callback]
+    if r2_callback is not None:
+        callbacks.append(r2_callback)
+
+    if args.image_monitor:
+        from vtt.callbacks.image_monitor import ImageMonitorCallback
+
+        callbacks.append(
+            ImageMonitorCallback(
+                save_dir=os.path.join(save_dir, "image_samples"),
+            )
+        )
+
     print(f"Starting training: {sac_cfg['total_timesteps']} timesteps")
 
     try:
         model.learn(
             total_timesteps=sac_cfg["total_timesteps"],
-            callback=[eval_callback, checkpoint_callback],
+            callback=callbacks,
             log_interval=10,
         )
     except KeyboardInterrupt:
@@ -140,11 +225,15 @@ def main():
         )
         print(f"Model + replay buffer saved to {final_path}")
 
+        if r2_callback is not None:
+            print("Uploading final state to R2...")
+            r2_callback.upload_final(model)
+
         if not args.no_wandb:
             wandb.finish()
 
         env.close()
-    eval_env.close()
+        eval_env.close()
 
 
 if __name__ == "__main__":
