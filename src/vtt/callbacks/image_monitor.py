@@ -5,6 +5,7 @@ black/empty frames after a silent render failure). Logs to W&B when available
 and always saves periodic sample frames to disk.
 """
 
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -20,6 +21,8 @@ class ImageMonitorCallback(BaseCallback):
         save_dir: Directory for local sample images. Created automatically.
         stats_every: Log scalar stats to W&B every N steps.
         sample_every: Save/log a sample frame every N steps.
+        r2_sync_every: Sync save_dir to R2 every N steps (0 = disabled).
+        r2_prefix: R2 path prefix for sync.
         verbose: Verbosity level.
     """
 
@@ -28,14 +31,19 @@ class ImageMonitorCallback(BaseCallback):
         save_dir: str = "experiments/image_samples",
         stats_every: int = 500,
         sample_every: int = 2000,
+        r2_sync_every: int = 0,
+        r2_prefix: str = "s3://vtt-uav-artifacts/debug/image_samples",
         verbose: int = 0,
     ) -> None:
         super().__init__(verbose)
         self.save_dir = Path(save_dir)
         self.stats_every = stats_every
         self.sample_every = sample_every
+        self.r2_sync_every = r2_sync_every
+        self.r2_prefix = r2_prefix
         self._last_stats_step = 0
         self._last_sample_step = 0
+        self._last_sync_step = 0
 
     def _init_callback(self) -> None:
         self.save_dir.mkdir(parents=True, exist_ok=True)
@@ -105,6 +113,16 @@ class ImageMonitorCallback(BaseCallback):
         except ImportError:
             pass
 
+    def _r2_sync(self) -> None:
+        """Batch-sync the local image_samples dir to R2."""
+        cmd = [
+            "aws", "--profile", "r2", "s3", "sync",
+            str(self.save_dir), self.r2_prefix,
+            "--exclude", "*.npy",  # only PNGs — npy files are large
+        ]
+        print(f"ImageMonitor: syncing PNGs to {self.r2_prefix}")
+        subprocess.run(cmd, capture_output=True, timeout=60)
+
     def _on_step(self) -> bool:
         img = self._get_image()
         if img is None:
@@ -117,5 +135,12 @@ class ImageMonitorCallback(BaseCallback):
         if self.num_timesteps - self._last_sample_step >= self.sample_every:
             self._save_sample(img)
             self._last_sample_step = self.num_timesteps
+
+        if (
+            self.r2_sync_every > 0
+            and self.num_timesteps - self._last_sync_step >= self.r2_sync_every
+        ):
+            self._r2_sync()
+            self._last_sync_step = self.num_timesteps
 
         return True

@@ -5,9 +5,12 @@ Actor:  depth images only -> CNN -> MLP -> action
 Critic: relative target state (privileged) -> MLP -> Q-value
 """
 
+import signal
+from contextlib import contextmanager
+
+import airsim
 import gymnasium as gym
 import numpy as np
-import airsim
 
 from vtt.constants import (
     TRACKER_VEHICLE,
@@ -31,6 +34,28 @@ from vtt.utils.camera_helpers import (
     render_depth_with_bbox,
 )
 from vtt.metrics.constants import TRAJECTORY_TRAIN_PRESETS
+
+RPC_TIMEOUT_S = 15  # seconds before we consider AirSim hung
+
+
+class AirSimTimeout(Exception):
+    """Raised when an AirSim RPC call exceeds its deadline."""
+
+
+@contextmanager
+def rpc_timeout(seconds: int = RPC_TIMEOUT_S):
+    """SIGALRM-based timeout for AirSim RPC calls (Linux only)."""
+
+    def _handler(_sig, _frame):
+        raise AirSimTimeout(f"AirSim RPC timed out after {seconds}s")
+
+    old = signal.signal(signal.SIGALRM, _handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
 
 
 def _quat_to_rotation_matrix(q) -> np.ndarray:
@@ -132,6 +157,15 @@ class TrackingEnv(gym.Env):
         self._frames_without_detection = 0
         self._max_lost_steps = 30
         self._frame_buffer = None
+        self._reset_retries = 0
+
+    def _reconnect(self):
+        """Re-create the AirSim client after a timeout or crash."""
+        print("TrackingEnv: reconnecting to AirSim...")
+        self.client = airsim.MultirotorClient()
+        self.client.confirmConnection()
+        self._raw_w, self._raw_h = get_raw_camera_resolution(self.client)
+        print("TrackingEnv: reconnected")
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -140,18 +174,34 @@ class TrackingEnv(gym.Env):
             self._follower.stop()
             self._follower = None
 
-        self.client.reset()
+        try:
+            with rpc_timeout(30):
+                self.client.reset()
 
-        for vehicle in [TRACKER_VEHICLE, TARGET_VEHICLE]:
-            self.client.enableApiControl(True, vehicle)
-            self.client.armDisarm(True, vehicle)
+                for vehicle in [TRACKER_VEHICLE, TARGET_VEHICLE]:
+                    self.client.enableApiControl(True, vehicle)
+                    self.client.armDisarm(True, vehicle)
 
-        self.client.takeoffAsync(vehicle_name=TRACKER_VEHICLE).join()
-        self.client.takeoffAsync(vehicle_name=TARGET_VEHICLE).join()
+                self.client.takeoffAsync(vehicle_name=TRACKER_VEHICLE).join()
+                self.client.takeoffAsync(vehicle_name=TARGET_VEHICLE).join()
 
-        setup_detector(self.client)
+                setup_detector(self.client)
 
-        target_pose = self.client.simGetVehiclePose(TARGET_VEHICLE)
+                target_pose = self.client.simGetVehiclePose(TARGET_VEHICLE)
+        except AirSimTimeout:
+            self._reset_retries += 1
+            if self._reset_retries > 3:
+                raise RuntimeError(
+                    "TrackingEnv: AirSim unresponsive after 3 reset retries"
+                )
+            print(
+                f"TrackingEnv: reset timed out (attempt {self._reset_retries}/3), "
+                "reconnecting..."
+            )
+            self._reconnect()
+            return self.reset(seed=seed, options=options)
+
+        self._reset_retries = 0
         tp = target_pose.position
         origin = np.array([tp.x_val, tp.y_val, -tp.z_val])
 
@@ -172,9 +222,28 @@ class TrackingEnv(gym.Env):
         obs = self._get_obs()
         return obs, {}
 
+    def _zero_obs(self):
+        """Return a valid zero observation for timeout fallback."""
+        img = np.zeros(
+            (self.frame_stack, self.image_size, self.image_size), dtype=np.float32
+        )
+        return {
+            "image": img,
+            "bbox": np.array([0.5, 0.5, 0.0, 0.0], dtype=np.float32),
+            "critic_state": np.zeros(9, dtype=np.float32),
+        }
+
     def step(self, action):
         self._step_count += 1
 
+        try:
+            with rpc_timeout():
+                return self._step_inner(action)
+        except AirSimTimeout:
+            print(f"TrackingEnv: step timed out at step {self._step_count}")
+            return self._zero_obs(), -10.0, True, False, {"airsim_timeout": True}
+
+    def _step_inner(self, action):
         vx_body = float(action[0]) * self.max_vel
         vy_body = float(action[1]) * self.max_vel
         vz_ned = float(action[2]) * self.max_vel

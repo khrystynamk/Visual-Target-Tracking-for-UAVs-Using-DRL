@@ -201,9 +201,14 @@ def main():
     if args.image_monitor:
         from vtt.callbacks.image_monitor import ImageMonitorCallback
 
+        img_save_dir = os.path.join(save_dir, "image_samples")
         callbacks.append(
             ImageMonitorCallback(
-                save_dir=os.path.join(save_dir, "image_samples"),
+                save_dir=img_save_dir,
+                stats_every=1,
+                sample_every=10,
+                r2_sync_every=50,
+                r2_prefix=f"s3://vtt-uav-artifacts/debug/{run_id}/image_samples",
             )
         )
 
