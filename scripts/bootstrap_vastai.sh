@@ -90,7 +90,7 @@ cp configs/airsim/settings.json "$HOME/Documents/AirSim/settings.json"
 echo "bootstrap_vastai: settings at $SETTINGS_PATH and $HOME/Documents/AirSim/"
 
 # --- Launch a virtual X server for UE to render into -------------------------
-Xvfb :99 -screen 0 1280x1024x24 -ac +extension GLX +render -noreset \
+Xvfb :99 -screen 0 768x480x24 -ac +extension GLX +render -noreset \
   > /tmp/xvfb.log 2>&1 &
 export DISPLAY=:99
 # Wait for Xvfb to be ready:
@@ -109,7 +109,7 @@ chown -R airsim:airsim /opt/airsim "$HOME/Documents/AirSim"
 DISPLAY=:99 nohup runuser -u airsim -- "$AIRSIM_SH" \
     -settings="$SETTINGS_PATH" \
     -opengl4 \
-    -windowed -ResX=224 -ResY=224 \
+    -windowed -ResX=768 -ResY=480 \
     -nosound -unattended -nosplash \
     > /tmp/airsim.log 2>&1 &
 
