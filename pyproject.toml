@@ -2,9 +2,6 @@
 name = "vtt-uav"
 version = "0.1.0"
 description = "Visual Target Tracking for UAVs Using Deep Reinforcement Learning"
-authors = [
-    {name = "Your Name",email = "you@example.com"}
-]
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
