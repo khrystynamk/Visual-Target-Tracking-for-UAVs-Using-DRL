@@ -222,6 +222,8 @@ def main():
         )
     except KeyboardInterrupt:
         print("\nTraining interrupted! Saving current model...")
+    except Exception as e: 
+        print(f"got unhandled error: {e}")
     finally:
         final_path = os.path.join(save_dir, "final_model")
         model.save(final_path)
