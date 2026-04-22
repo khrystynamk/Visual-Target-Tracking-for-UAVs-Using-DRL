@@ -30,7 +30,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
   libvulkan1 vulkan-tools mesa-vulkan-drivers \
-  libgl1 libgl1-mesa-dri \
+  libgl1-mesa-glx libgl1-mesa-dri \
   libsdl2-2.0-0 libasound2t64 libpulse0 \
   libxrandr2 libxi6 libxinerama1 libxcursor1 libxss1 libxkbcommon0 \
   xvfb x11-utils mesa-utils \
@@ -75,8 +75,13 @@ chmod +x "$AIRSIM_SH"
 echo "bootstrap_vastai: AirSim launcher = $AIRSIM_SH"
 
 # --- AirSim settings.json ----------------------------------------------------
+SETTINGS_PATH=/opt/airsim/settings.json
+mkdir -p "$(dirname "$SETTINGS_PATH")"
+cp configs/airsim/settings.json "$SETTINGS_PATH"
+
 mkdir -p "$HOME/Documents/AirSim"
 cp configs/airsim/settings.json "$HOME/Documents/AirSim/settings.json"
+echo "bootstrap_vastai: settings at $SETTINGS_PATH and $HOME/Documents/AirSim/"
 
 # --- Launch a virtual X server for UE to render into -------------------------
 Xvfb :99 -screen 0 1280x1024x24 -ac +extension GLX +render -noreset \
@@ -92,8 +97,14 @@ xdpyinfo -display :99 >/dev/null || { echo "Xvfb never came up"; tail /tmp/xvfb.
 # --- Launch AirSim on that virtual display, with OpenGL4 RHI -----------------
 id -u airsim &>/dev/null || useradd -m -s /bin/bash airsim
 chown -R airsim:airsim /opt/airsim "$HOME/Documents/AirSim"
-DISPLAY=:99 nohup runuser -u airsim -- "$AIRSIM_SH" \
-    -opengl4 -nosound -windowed -ResX=640 -ResY=480 \
+# DISPLAY=:99 nohup runuser -u airsim -- "$AIRSIM_SH" \
+#     -opengl4 -nosound -windowed -ResX=640 -ResY=480 \
+#     > /tmp/airsim.log 2>&1 &
+DISPLAY=:99 nohup "$AIRSIM_SH" \
+    -settings="$SETTINGS_PATH" \
+    -opengl4 \
+    -windowed -ResX=640 -ResY=480 \
+    -nosound -unattended -nosplash \
     > /tmp/airsim.log 2>&1 &
 
 # --- Wait for RPC port -------------------------------------------------------
@@ -136,5 +147,4 @@ pip install -e .
 wandb login "$WANDB_API_KEY"
 
 # Training runs in the foreground so vast.ai's onstart log shows it.
-# Use --no-render because the instance is headless.
-exec python scripts/train.py --config "$CONFIG" --no-render
+exec python scripts/train.py --config "$CONFIG"
