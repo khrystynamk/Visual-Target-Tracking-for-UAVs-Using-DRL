@@ -92,43 +92,12 @@ cp configs/airsim/settings.json "$HOME/Documents/AirSim/settings.json"
 echo "bootstrap_vastai: settings at $SETTINGS_PATH and $HOME/Documents/AirSim/"
 
 # --- Launch AirSim instance(s) -----------------------------------------------
+# Always N_ENVS + 1: the extra instance is for eval (dedicated port so
+# eval's client.reset() doesn't nuke training sim state).
 export AIRSIM_SETTINGS="$SETTINGS_PATH"
-if [ "$N_ENVS" -gt 1 ]; then
-  echo "bootstrap_vastai: launching $N_ENVS parallel AirSim instances"
-  bash scripts/launch_airsim_fleet.sh "$N_ENVS"
-else
-  # Single instance — original path
-  Xvfb :99 -screen 0 768x480x24 -ac +extension GLX +render -noreset \
-    > /tmp/xvfb.log 2>&1 &
-  export DISPLAY=:99
-  for i in $(seq 1 30); do
-    if xdpyinfo -display :99 >/dev/null 2>&1; then echo "Xvfb ready"; break; fi
-    sleep 1
-  done
-  xdpyinfo -display :99 >/dev/null || { echo "Xvfb never came up"; tail /tmp/xvfb.log; exit 1; }
-
-  id -u airsim &>/dev/null || useradd -m -s /bin/bash airsim
-  chown -R airsim:airsim /opt/airsim "$HOME/Documents/AirSim"
-  DISPLAY=:99 nohup runuser -u airsim -- "$AIRSIM_SH" \
-      -settings="$SETTINGS_PATH" \
-      -opengl4 \
-      -windowed -ResX=768 -ResY=480 \
-      -nosound -unattended -nosplash \
-      > /tmp/airsim.log 2>&1 &
-
-  for i in $(seq 1 120); do
-    if nc -z 127.0.0.1 41451 2>/dev/null; then
-      echo "bootstrap_vastai: AirSim RPC ready after ${i}s"
-      break
-    fi
-    sleep 1
-  done
-  nc -z 127.0.0.1 41451 || {
-    echo "bootstrap_vastai: AirSim never opened port 41451"
-    tail -80 /tmp/airsim.log
-    exit 1
-  }
-fi
+TOTAL_AIRSIM=$((N_ENVS + 1))
+echo "bootstrap_vastai: launching $TOTAL_AIRSIM AirSim instances ($N_ENVS train + 1 eval)"
+bash scripts/launch_airsim_fleet.sh "$TOTAL_AIRSIM"
 
 # --- Python 3.11 venv (airsim + tornado 4.x are broken on 3.12+) ------------
 apt-get install -y --no-install-recommends software-properties-common
