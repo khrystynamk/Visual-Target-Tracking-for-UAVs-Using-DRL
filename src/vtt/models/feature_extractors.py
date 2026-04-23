@@ -7,6 +7,7 @@ Critic (CriticExtractor): receives relative 9D state of the target [pos, vel, ac
 
 import torch
 import torch.nn as nn
+from torch.utils.checkpoint import checkpoint
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 import gymnasium as gym
 from defm.utils.utils import preprocess_depth_image
@@ -60,8 +61,10 @@ class DepthResNet(BaseFeaturesExtractor):
         flat = images.reshape(b * s, images.shape[2], images.shape[3])
         preprocessed = self._preprocess_batch(flat)  # (B*S, 3, H', W')
 
-        out = self.defm(preprocessed)
-        feat = out["global_backbone"]  # (B*S, 512)
+        def _defm_forward(x):
+            return self.defm(x)["global_backbone"]
+
+        feat = checkpoint(_defm_forward, preprocessed, use_reentrant=False)  # (B*S, 512)
 
         feat = feat.reshape(b, s * 512)  # (B, S*512)
         feat = torch.cat([feat, bbox], dim=1)  # (B, S*512 + 4)

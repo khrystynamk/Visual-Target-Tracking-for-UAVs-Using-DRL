@@ -150,6 +150,9 @@ pip install -e /opt/defm --no-deps  # --no-deps to avoid tornado conflict
 # --- Install project ---------------------------------------------------------
 pip install -e .
 
+# --- CUDA memory optimization ------------------------------------------------
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+
 # --- W&B + train -------------------------------------------------------------
 wandb login "$WANDB_API_KEY"
 
