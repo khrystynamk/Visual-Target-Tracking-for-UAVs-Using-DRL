@@ -175,28 +175,6 @@ class TrackingEnv(gym.Env):
         self._frame_buffer = None
         self._reset_retries = 0
 
-    def _reconnect(self):
-        """
-        Kill and restart the AirSim process, then reconnect.
-        """
-        import subprocess
-
-        print("TrackingEnv: restarting AirSim process...")
-        result = subprocess.run(
-            ["bash", "scripts/restart_airsim.sh"],
-            capture_output=True,
-            text=True,
-            timeout=180,
-        )
-        if result.returncode != 0:
-            print(f"TrackingEnv: restart_airsim.sh failed:\n{result.stderr}")
-            raise RuntimeError("Failed to restart AirSim")
-        print(result.stdout.strip())
-        self.client = airsim.MultirotorClient()
-        self.client.confirmConnection()
-        self._raw_w, self._raw_h = get_raw_camera_resolution(self.client)
-        print("TrackingEnv: reconnected to fresh AirSim")
-
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
@@ -228,9 +206,8 @@ class TrackingEnv(gym.Env):
                 )
             print(
                 f"TrackingEnv: reset timed out (attempt {self._reset_retries}/3), "
-                "reconnecting..."
+                "retrying..."
             )
-            self._reconnect()
             return self.reset(seed=seed, options=options)
 
         self._reset_retries = 0

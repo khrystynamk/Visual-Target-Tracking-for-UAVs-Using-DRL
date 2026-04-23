@@ -174,7 +174,7 @@ if [ -n "$RUN_ID" ]; then
 fi
 
 # Always monitor images — catches dead renderers early
-TRAIN_CMD+=(--image-monitor)
+# TRAIN_CMD+=(--image-monitor)
 
 # Training runs in the foreground so vast.ai's onstart log shows it.
 exec "${TRAIN_CMD[@]}"
