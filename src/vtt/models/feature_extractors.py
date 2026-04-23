@@ -10,7 +10,7 @@ import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 import gymnasium as gym
-from defm.utils.utils import preprocess_depth_image
+from defm.utils.utils import preprocess_depth_batch
 
 
 class DepthResNet(BaseFeaturesExtractor):
@@ -45,14 +45,8 @@ class DepthResNet(BaseFeaturesExtractor):
         raw_depth_batch (B, H, W) — raw depth in meters
         (B, 3, H_out, W_out) — DeFM 3-channel metric format
         """
-        preprocessed = []
-        for i in range(raw_depth_batch.shape[0]):
-            tensor = preprocess_depth_image(
-                raw_depth_batch[i].cpu().numpy(), target_size=224
-            )
-            preprocessed.append(tensor.squeeze(0))
-        return torch.stack(preprocessed).to(
-            device=raw_depth_batch.device, dtype=torch.float32
+        return preprocess_depth_batch(
+            raw_depth_batch, target_size=224, device=raw_depth_batch.device
         )
 
     def forward(self, images: torch.Tensor, bbox: torch.Tensor) -> torch.Tensor:
