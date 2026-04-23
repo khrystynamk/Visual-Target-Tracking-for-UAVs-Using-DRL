@@ -17,10 +17,12 @@ class TrajectoryFollower:
         trajectory: BaseTrajectory,
         vehicle_name: str = "Target",
         dt: float = 0.05,
+        api_port: int = 41451,
     ):
         self.trajectory = trajectory
         self.vehicle_name = vehicle_name
         self.dt = dt
+        self.api_port = api_port
 
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -58,7 +60,7 @@ class TrajectoryFollower:
     def _run(self):
         # Each thread needs its own AirSim client — msgpack-rpc/tornado
         # IOLoop cannot be shared across threads.
-        client = airsim.MultirotorClient()
+        client = airsim.MultirotorClient(port=self.api_port)
         client.confirmConnection()
 
         while not self._stop_event.is_set():

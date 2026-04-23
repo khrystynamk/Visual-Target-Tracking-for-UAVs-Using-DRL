@@ -15,6 +15,7 @@
 #   RUN_ID       - R2 run identifier (default: derived from config's wandb.name)
 #   RESUME       - "auto" to resume from R2, "off" to start fresh (default: auto)
 #   R2_SYNC      - "1" to enable R2 checkpoint sync (default: 1)
+#   N_ENVS       - number of parallel AirSim environments (default: 1)
 set -euxo pipefail
 
 : "${CONFIG:=configs/drl/sac_depth.yaml}"
@@ -23,6 +24,7 @@ set -euxo pipefail
 : "${RUN_ID:=}"
 : "${RESUME:=auto}"
 : "${R2_SYNC:=1}"
+: "${N_ENVS:=1}"
 
 for v in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_ACCOUNT_ID WANDB_API_KEY; do
   if [ -z "${!v:-}" ]; then
@@ -89,43 +91,44 @@ mkdir -p "$HOME/Documents/AirSim"
 cp configs/airsim/settings.json "$HOME/Documents/AirSim/settings.json"
 echo "bootstrap_vastai: settings at $SETTINGS_PATH and $HOME/Documents/AirSim/"
 
-# --- Launch a virtual X server for UE to render into -------------------------
-Xvfb :99 -screen 0 768x480x24 -ac +extension GLX +render -noreset \
-  > /tmp/xvfb.log 2>&1 &
-export DISPLAY=:99
-# Wait for Xvfb to be ready:
-for i in $(seq 1 30); do
-  if xdpyinfo -display :99 >/dev/null 2>&1; then echo "Xvfb ready"; break; fi
-  sleep 1
-done
-xdpyinfo -display :99 >/dev/null || { echo "Xvfb never came up"; tail /tmp/xvfb.log; exit 1; }
+# --- Launch AirSim instance(s) -----------------------------------------------
+export AIRSIM_SETTINGS="$SETTINGS_PATH"
+if [ "$N_ENVS" -gt 1 ]; then
+  echo "bootstrap_vastai: launching $N_ENVS parallel AirSim instances"
+  bash scripts/launch_airsim_fleet.sh "$N_ENVS"
+else
+  # Single instance — original path
+  Xvfb :99 -screen 0 768x480x24 -ac +extension GLX +render -noreset \
+    > /tmp/xvfb.log 2>&1 &
+  export DISPLAY=:99
+  for i in $(seq 1 30); do
+    if xdpyinfo -display :99 >/dev/null 2>&1; then echo "Xvfb ready"; break; fi
+    sleep 1
+  done
+  xdpyinfo -display :99 >/dev/null || { echo "Xvfb never came up"; tail /tmp/xvfb.log; exit 1; }
 
-# --- Launch AirSim on that virtual display, with OpenGL4 RHI -----------------
-id -u airsim &>/dev/null || useradd -m -s /bin/bash airsim
-chown -R airsim:airsim /opt/airsim "$HOME/Documents/AirSim"
-# DISPLAY=:99 nohup runuser -u airsim -- "$AIRSIM_SH" \
-#     -opengl4 -nosound -windowed -ResX=640 -ResY=480 \
-#     > /tmp/airsim.log 2>&1 &
-DISPLAY=:99 nohup runuser -u airsim -- "$AIRSIM_SH" \
-    -settings="$SETTINGS_PATH" \
-    -opengl4 \
-    -windowed -ResX=768 -ResY=480 \
-    -nosound -unattended -nosplash \
-    > /tmp/airsim.log 2>&1 &
+  id -u airsim &>/dev/null || useradd -m -s /bin/bash airsim
+  chown -R airsim:airsim /opt/airsim "$HOME/Documents/AirSim"
+  DISPLAY=:99 nohup runuser -u airsim -- "$AIRSIM_SH" \
+      -settings="$SETTINGS_PATH" \
+      -opengl4 \
+      -windowed -ResX=768 -ResY=480 \
+      -nosound -unattended -nosplash \
+      > /tmp/airsim.log 2>&1 &
 
-# --- Wait for RPC port -------------------------------------------------------
-for i in $(seq 1 120); do
-  if nc -z 127.0.0.1 41451 2>/dev/null; then
-    echo "bootstrap_vastai: AirSim RPC ready after ${i}s"
-    break
-  fi
-  sleep 1
-done
-nc -z 127.0.0.1 41451 || {
-  echo "bootstrap_vastai: AirSim never opened port 41451"
-  tail -80 /tmp/airsim.log
-  exit 1
-}
+  for i in $(seq 1 120); do
+    if nc -z 127.0.0.1 41451 2>/dev/null; then
+      echo "bootstrap_vastai: AirSim RPC ready after ${i}s"
+      break
+    fi
+    sleep 1
+  done
+  nc -z 127.0.0.1 41451 || {
+    echo "bootstrap_vastai: AirSim never opened port 41451"
+    tail -80 /tmp/airsim.log
+    exit 1
+  }
+fi
 
 # --- Python 3.11 venv (airsim + tornado 4.x are broken on 3.12+) ------------
 apt-get install -y --no-install-recommends software-properties-common
@@ -175,6 +178,10 @@ fi
 
 # Always monitor images — catches dead renderers early
 # TRAIN_CMD+=(--image-monitor)
+
+if [ "$N_ENVS" -gt 1 ]; then
+  TRAIN_CMD+=(--n-envs "$N_ENVS")
+fi
 
 # Training runs in the foreground so vast.ai's onstart log shows it.
 exec "${TRAIN_CMD[@]}"

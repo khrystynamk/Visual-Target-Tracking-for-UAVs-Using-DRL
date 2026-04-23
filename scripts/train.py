@@ -16,9 +16,13 @@ import torch
 import wandb
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
+from stable_baselines3.common.vec_env import SubprocVecEnv
 
 from vtt.envs.tracking_env import TrackingEnv
 from vtt.models.asymmetric_policy import AsymmetricSACPolicy
+
+BASE_PORT = 41451
+PORT_STEP = 10
 
 
 def load_config(path: str) -> dict:
@@ -26,8 +30,21 @@ def load_config(path: str) -> dict:
         return yaml.safe_load(f)
 
 
-def make_env(env_cfg: dict) -> TrackingEnv:
-    return TrackingEnv(**env_cfg)
+def make_env(env_cfg: dict, api_port: int = 41451):
+    """Create a single TrackingEnv connected to a specific AirSim port."""
+    return TrackingEnv(**env_cfg, api_port=api_port)
+
+
+def make_vec_env(env_cfg: dict, n_envs: int):
+    """Create a SubprocVecEnv with n_envs, each on a different AirSim port."""
+    def _make_env_fn(port):
+        def _init():
+            return TrackingEnv(**env_cfg, api_port=port)
+        return _init
+
+    ports = [BASE_PORT + i * PORT_STEP for i in range(n_envs)]
+    print(f"Creating {n_envs} parallel envs on ports: {ports}")
+    return SubprocVecEnv([_make_env_fn(p) for p in ports])
 
 
 def main():
@@ -65,6 +82,12 @@ def main():
         "--image-monitor",
         action="store_true",
         help="Log depth image stats + sample frames to W&B and disk",
+    )
+    parser.add_argument(
+        "--n-envs",
+        type=int,
+        default=1,
+        help="Number of parallel AirSim environments (default: 1)",
     )
     args = parser.parse_args()
 
@@ -139,8 +162,18 @@ def main():
 
     if args.show:
         env_cfg["show_cv"] = True
-    env = make_env(env_cfg)
-    eval_env = make_env(env_cfg)
+
+    n_envs = args.n_envs
+    if n_envs > 1:
+        env = make_vec_env(env_cfg, n_envs)
+        # Eval uses a single env on the first port (not vectorized —
+        # EvalCallback wraps it in DummyVecEnv automatically)
+        eval_env = make_env(env_cfg, api_port=BASE_PORT)
+    else:
+        env = make_env(env_cfg)
+        eval_env = make_env(env_cfg)
+
+    print(f"Training with {n_envs} env(s)")
 
     if args.resume:
         print(f"Resuming from {args.resume}")

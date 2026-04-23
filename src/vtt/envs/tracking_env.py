@@ -115,6 +115,7 @@ class TrackingEnv(gym.Env):
         min_distance: float = MIN_DISTANCE,
         show_cv: bool = False,
         render_mode: str | None = None,
+        api_port: int = 41451,
     ):
         super().__init__()
         self.show_cv = show_cv
@@ -128,6 +129,7 @@ class TrackingEnv(gym.Env):
         self.max_distance = max_distance
         self.min_distance = min_distance
         self.render_mode = render_mode
+        self.api_port = api_port
 
         self.observation_space = gym.spaces.Dict(
             {
@@ -162,7 +164,7 @@ class TrackingEnv(gym.Env):
             dtype=np.float32,
         )
 
-        self.client = airsim.MultirotorClient()
+        self.client = airsim.MultirotorClient(port=self.api_port)
         self.client.confirmConnection()
         self._raw_w, self._raw_h = get_raw_camera_resolution(self.client)
 
@@ -218,7 +220,9 @@ class TrackingEnv(gym.Env):
         self._trajectory = TRAJECTORY_TRAIN_PRESETS[idx](origin)
         self._episode_count += 1
 
-        self._follower = TrajectoryFollower(self._trajectory, TARGET_VEHICLE, dt=TS)
+        self._follower = TrajectoryFollower(
+            self._trajectory, TARGET_VEHICLE, dt=TS, api_port=self.api_port,
+        )
         self._follower.start()
 
         self._step_count = 0
