@@ -63,7 +63,7 @@
     },
     "Target": {
       "VehicleType": "SimpleFlight",
-      "X": 0.5,
+      "X": 2,
       "Y": 0,
       "Z": 0
     }
