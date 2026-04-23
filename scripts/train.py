@@ -3,7 +3,7 @@ Train a SAC agent for visual target tracking.
 
 Usage:
   python scripts/train.py --config configs/drl/sac_depth.yaml
-  python scripts/train.py --config configs/drl/sac_rgb.yaml
+  python scripts/train.py --config configs/drl/sac_depth.yaml --n-envs 4
 """
 
 import argparse
@@ -11,12 +11,16 @@ import os
 import signal
 import subprocess
 
+import numpy as np
 import yaml
 import torch
 import wandb
 from stable_baselines3 import SAC
-from stable_baselines3.common.callbacks import EvalCallback, CheckpointCallback
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.callbacks import CheckpointCallback
+from wandb.integration.sb3 import WandbCallback
+from stable_baselines3.common.evaluation import evaluate_policy
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from vtt.envs.tracking_env import TrackingEnv
 from vtt.models.asymmetric_policy import AsymmetricSACPolicy
@@ -30,21 +34,45 @@ def load_config(path: str) -> dict:
         return yaml.safe_load(f)
 
 
-def make_env(env_cfg: dict, api_port: int = 41451):
-    """Create a single TrackingEnv connected to a specific AirSim port."""
-    return TrackingEnv(**env_cfg, api_port=api_port)
+def make_env_fn(env_cfg: dict, api_port: int = 41451):
+    """
+    Return a callable that creates a Monitor-wrapped TrackingEnv.
+    """
+
+    def _init():
+        env = TrackingEnv(**env_cfg, api_port=api_port)
+        return Monitor(env)
+
+    return _init
 
 
-def make_vec_env(env_cfg: dict, n_envs: int):
-    """Create a SubprocVecEnv with n_envs, each on a different AirSim port."""
-    def _make_env_fn(port):
-        def _init():
-            return TrackingEnv(**env_cfg, api_port=port)
-        return _init
+def make_single_env(env_cfg: dict, api_port: int = 41451):
+    """
+    Create a single Monitor-wrapped env.
+    """
+    env = TrackingEnv(**env_cfg, api_port=api_port)
+    return Monitor(env)
 
-    ports = [BASE_PORT + i * PORT_STEP for i in range(n_envs)]
-    print(f"Creating {n_envs} parallel envs on ports: {ports}")
-    return SubprocVecEnv([_make_env_fn(p) for p in ports])
+
+def make_train_env(env_cfg: dict, n_envs: int):
+    """
+    Create training env(s): SubprocVecEnv if n_envs > 1, else DummyVecEnv.
+    """
+    if n_envs > 1:
+        ports = [BASE_PORT + i * PORT_STEP for i in range(n_envs)]
+        print(f"Creating {n_envs} parallel training envs on ports: {ports}")
+        return SubprocVecEnv([make_env_fn(env_cfg, port) for port in ports])
+    else:
+        return DummyVecEnv([make_env_fn(env_cfg, BASE_PORT)])
+
+
+def make_eval_env(env_cfg: dict, n_envs: int):
+    """
+    Create eval env on a dedicated AirSim port (separate from training).
+    """
+    eval_port = BASE_PORT + n_envs * PORT_STEP
+    print(f"Eval env on port {eval_port}")
+    return DummyVecEnv([make_env_fn(env_cfg, eval_port)])
 
 
 def main():
@@ -81,7 +109,7 @@ def main():
     parser.add_argument(
         "--image-monitor",
         action="store_true",
-        help="Log depth image stats + sample frames to W&B and disk",
+        help="Log depth image stats + sample frames to disk",
     )
     parser.add_argument(
         "--n-envs",
@@ -164,14 +192,8 @@ def main():
         env_cfg["show_cv"] = True
 
     n_envs = args.n_envs
-    if n_envs > 1:
-        env = make_vec_env(env_cfg, n_envs)
-        # Eval uses a single env on the first port (not vectorized —
-        # EvalCallback wraps it in DummyVecEnv automatically)
-        eval_env = make_env(env_cfg, api_port=BASE_PORT)
-    else:
-        env = make_env(env_cfg)
-        eval_env = make_env(env_cfg)
+    env = make_train_env(env_cfg, n_envs)
+    eval_env = make_eval_env(env_cfg, n_envs)
 
     print(f"Training with {n_envs} env(s)")
 
@@ -201,15 +223,6 @@ def main():
             device=device,
         )
 
-    eval_callback = EvalCallback(
-        eval_env,
-        best_model_save_path=os.path.join(save_dir, "best"),
-        log_path=os.path.join(save_dir, "eval_logs"),
-        eval_freq=cfg["eval_freq"],
-        n_eval_episodes=cfg["eval_episodes"],
-        deterministic=True,
-    )
-
     checkpoint_callback = CheckpointCallback(
         save_freq=1000,
         save_path=os.path.join(save_dir, "checkpoints"),
@@ -226,7 +239,9 @@ def main():
             upload_freq=cfg.get("r2_upload_freq", 5000),
         )
 
-    callbacks = [eval_callback, checkpoint_callback]
+    callbacks = [checkpoint_callback]
+    if not args.no_wandb:
+        callbacks.append(WandbCallback(verbose=2))
     if r2_callback is not None:
         callbacks.append(r2_callback)
 
@@ -237,21 +252,60 @@ def main():
         callbacks.append(
             ImageMonitorCallback(
                 save_dir=img_save_dir,
-                stats_every=1,
                 sample_every=10,
                 r2_sync_every=50,
                 r2_prefix=f"s3://vtt-uav-artifacts/debug/{run_id}/image_samples",
             )
         )
 
-    print(f"Starting training: {sac_cfg['total_timesteps']} timesteps")
+    eval_freq = cfg["eval_freq"]
+    eval_episodes = cfg["eval_episodes"]
+    total_timesteps = sac_cfg["total_timesteps"]
+    best_mean_reward = -np.inf
+    best_dir = os.path.join(save_dir, "best")
+    os.makedirs(best_dir, exist_ok=True)
+
+    print(f"Starting training: {total_timesteps} timesteps, eval every {eval_freq}")
 
     try:
-        model.learn(
-            total_timesteps=sac_cfg["total_timesteps"],
-            callback=callbacks,
-            log_interval=10,
-        )
+        timesteps_done = 0
+        while timesteps_done < total_timesteps:
+            chunk = min(eval_freq, total_timesteps - timesteps_done)
+
+            model.learn(
+                total_timesteps=chunk,
+                callback=callbacks,
+                log_interval=10,
+                reset_num_timesteps=False,
+            )
+            timesteps_done += chunk
+
+            # Evaluate
+            mean_reward, std_reward = evaluate_policy(
+                model,
+                eval_env,
+                n_eval_episodes=eval_episodes,
+                deterministic=True,
+            )
+            print(
+                f"Eval at {timesteps_done} steps: "
+                f"reward={mean_reward:.2f} +/- {std_reward:.2f}"
+            )
+            if not args.no_wandb:
+                wandb.log(
+                    {
+                        "eval/mean_reward": mean_reward,
+                        "eval/std_reward": std_reward,
+                    },
+                    step=timesteps_done,
+                )
+
+            # Save best model
+            if mean_reward > best_mean_reward:
+                best_mean_reward = mean_reward
+                model.save(os.path.join(best_dir, "best_model"))
+                print(f"New best mean reward: {mean_reward:.2f}")
+
     except KeyboardInterrupt:
         print("\nTraining interrupted! Saving current model...")
     except Exception as e:

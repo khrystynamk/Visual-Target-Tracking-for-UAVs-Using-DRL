@@ -221,7 +221,10 @@ class TrackingEnv(gym.Env):
         self._episode_count += 1
 
         self._follower = TrajectoryFollower(
-            self._trajectory, TARGET_VEHICLE, dt=TS, api_port=self.api_port,
+            self._trajectory,
+            TARGET_VEHICLE,
+            dt=TS,
+            api_port=self.api_port,
         )
         self._follower.start()
 

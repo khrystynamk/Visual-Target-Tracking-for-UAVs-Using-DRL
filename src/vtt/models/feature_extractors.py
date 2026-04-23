@@ -59,7 +59,9 @@ class DepthResNet(BaseFeaturesExtractor):
         def _defm_forward(x):
             return self.defm(x)["global_backbone"]
 
-        feat = checkpoint(_defm_forward, preprocessed, use_reentrant=False)  # (B*S, 512)
+        feat = checkpoint(
+            _defm_forward, preprocessed, use_reentrant=False
+        )  # (B*S, 512)
 
         feat = feat.reshape(b, s * 512)  # (B, S*512)
         feat = torch.cat([feat, bbox], dim=1)  # (B, S*512 + 4)
