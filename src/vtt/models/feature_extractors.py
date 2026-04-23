@@ -31,8 +31,9 @@ class DepthResNet(BaseFeaturesExtractor):
             trust_repo=True,
         )
 
-        for param in self.defm.parameters():
-            param.requires_grad = True
+        for name, param in self.defm.named_parameters():
+            if any(k in name for k in ("conv1", "bn1", "layer1", "layer2")):
+                param.requires_grad = False
 
         self.linear = nn.Sequential(
             nn.Linear(self.frame_stack * 512 + 4, features_dim),
