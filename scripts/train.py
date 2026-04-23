@@ -82,7 +82,7 @@ def main():
 
     os.makedirs(save_dir, exist_ok=True)
 
-    # --- Auto-resume from R2 --------------------------------------------------
+    # Auto-resume from R2
     if args.resume == "auto":
         resume_dir = os.path.join(save_dir, "_r2_resume")
         os.makedirs(resume_dir, exist_ok=True)
@@ -96,7 +96,6 @@ def main():
         )
         if result.returncode == 0:
             args.resume = model_dest
-            # Also try replay buffer (training works without it)
             replay_dest = os.path.join(resume_dir, "model_replay_buffer.pkl")
             rb = subprocess.run(
                 [
@@ -222,7 +221,7 @@ def main():
         )
     except KeyboardInterrupt:
         print("\nTraining interrupted! Saving current model...")
-    except Exception as e: 
+    except Exception as e:
         print(f"got unhandled error: {e}")
     finally:
         final_path = os.path.join(save_dir, "final_model")

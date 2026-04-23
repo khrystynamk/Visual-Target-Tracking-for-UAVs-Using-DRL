@@ -39,12 +39,16 @@ RPC_TIMEOUT_S = 15  # seconds before we consider AirSim hung
 
 
 class AirSimTimeout(Exception):
-    """Raised when an AirSim RPC call exceeds its deadline."""
+    """
+    Raised when an AirSim RPC call exceeds its deadline.
+    """
 
 
 @contextmanager
 def rpc_timeout(seconds: int = RPC_TIMEOUT_S):
-    """SIGALRM-based timeout for AirSim RPC calls (Linux only)."""
+    """
+    SIGALRM-based timeout for AirSim RPC calls (Linux only).
+    """
 
     def _handler(_sig, _frame):
         # The alarm fires while tornado's IOLoop.start() is running inside
@@ -172,13 +176,17 @@ class TrackingEnv(gym.Env):
         self._reset_retries = 0
 
     def _reconnect(self):
-        """Kill and restart the AirSim process, then reconnect."""
+        """
+        Kill and restart the AirSim process, then reconnect.
+        """
         import subprocess
 
         print("TrackingEnv: restarting AirSim process...")
         result = subprocess.run(
             ["bash", "scripts/restart_airsim.sh"],
-            capture_output=True, text=True, timeout=180,
+            capture_output=True,
+            text=True,
+            timeout=180,
         )
         if result.returncode != 0:
             print(f"TrackingEnv: restart_airsim.sh failed:\n{result.stderr}")
@@ -247,7 +255,9 @@ class TrackingEnv(gym.Env):
         return obs, {}
 
     def _zero_obs(self):
-        """Return a valid zero observation for timeout fallback."""
+        """
+        Return a valid zero observation for timeout fallback.
+        """
         img = np.zeros(
             (self.frame_stack, self.image_size, self.image_size), dtype=np.float32
         )

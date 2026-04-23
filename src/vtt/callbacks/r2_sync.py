@@ -1,5 +1,3 @@
-"""R2 checkpoint sync callback for stable-baselines3."""
-
 import json
 import subprocess
 import time
@@ -7,11 +5,12 @@ from pathlib import Path
 
 from stable_baselines3.common.callbacks import BaseCallback
 
-UPLOAD_TIMEOUT = 300  # seconds; replay buffers can be large
+UPLOAD_TIMEOUT = 300  # seconds
 
 
 class R2SyncCallback(BaseCallback):
-    """Uploads training checkpoints to Cloudflare R2 periodically.
+    """
+    Uploads training checkpoints to Cloudflare R2 periodically.
 
     Designed for vast.ai spot instances: enables pause/resume by keeping
     the latest model + replay buffer in R2.
@@ -45,7 +44,9 @@ class R2SyncCallback(BaseCallback):
         self._last_upload_step = 0
 
     def _s3_cp(self, local: str, remote: str) -> bool:
-        """Upload a file to R2. Returns True on success."""
+        """
+        Upload a file to R2. Returns True on success.
+        """
         cmd = ["aws", "--profile", "r2", "s3", "cp", local, remote]
         if self.verbose:
             print(f"R2SyncCallback: uploading {local} -> {remote}")
@@ -65,7 +66,9 @@ class R2SyncCallback(BaseCallback):
         return True
 
     def _upload_meta(self, step: int) -> None:
-        """Write and upload meta.json with current training state."""
+        """
+        Write and upload meta.json with current training state.
+        """
         meta = {
             "run_id": self.run_id,
             "last_step": step,
@@ -76,7 +79,9 @@ class R2SyncCallback(BaseCallback):
         self._s3_cp(str(meta_path), f"{self.r2_base}/meta.json")
 
     def _sync_new_checkpoints(self) -> None:
-        """Upload any checkpoint files that haven't been uploaded yet."""
+        """
+        Upload any checkpoint files that haven't been uploaded yet.
+        """
         ckpt_dir = self.save_dir / "checkpoints"
         if not ckpt_dir.exists():
             return
@@ -103,7 +108,8 @@ class R2SyncCallback(BaseCallback):
         return True
 
     def upload_final(self, model) -> None:
-        """Upload final model + replay buffer to runs/{run_id}/latest/.
+        """
+        Upload final model + replay buffer to runs/{run_id}/latest/.
 
         Call this from the finally block in train.py after model.save().
         """

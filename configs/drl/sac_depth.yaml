@@ -6,16 +6,16 @@ env:
   frame_stack: 3
   max_episode_steps: 300
   max_vel: 5.0
-  max_yaw_rate: 90.0
-  desired_distance: 2.0
+  max_yaw_rate: 229.0
+  desired_distance: 0.5
   max_distance: 8.0
-  min_distance: 0.5
+  min_distance: 0.3
 
 sac:
   total_timesteps: 200000
   learning_rate: 0.0003
   buffer_size: 10000
-  batch_size: 256
+  batch_size: 64
   learning_starts: 1000
   train_freq: 1
   gamma: 0.99

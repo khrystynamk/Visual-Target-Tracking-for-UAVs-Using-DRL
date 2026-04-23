@@ -34,7 +34,7 @@ def capture_frame(client: airsim.MultirotorClient):
 def capture_depth_raw(client) -> np.ndarray:
     """
     Capture raw depth in meters from AirSim. Returns (H, W) float32.
-    No normalization — DeFM's preprocess_depth_image handles that.
+    DeFM's preprocess_depth_image handles normalization.
     """
     responses = client.simGetImages(
         [
