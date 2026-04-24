@@ -185,6 +185,7 @@ def main():
             "project": cfg["wandb"]["project"],
             "name": cfg["wandb"]["name"],
             "config": cfg,
+            "sync_tensorboard": True,
         }
         wandb.init(**wandb_kwargs)
 
@@ -240,9 +241,10 @@ def main():
             upload_freq=cfg.get("r2_upload_freq", 5000),
         )
 
-    if not args.no_wandb:
-        new_logger = configure(save_dir, ["stdout", "wandb"])
-        model.set_logger(new_logger)
+    # Log to stdout + tensorboard; W&B picks up tensorboard via sync_tensorboard=True
+    tb_dir = os.path.join(save_dir, "tb")
+    new_logger = configure(tb_dir, ["stdout", "tensorboard"])
+    model.set_logger(new_logger)
 
     callbacks = [checkpoint_callback]
     if r2_callback is not None:
