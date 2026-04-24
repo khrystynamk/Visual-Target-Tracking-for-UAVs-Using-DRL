@@ -8,8 +8,8 @@ env:
   max_vel: 5.0
   max_yaw_rate: 229.0
   desired_distance: 2.0
-  max_distance: 10.0
-  min_distance: 1.0
+  max_distance: 8.0
+  min_distance: 0.3
 
 sac:
   total_timesteps: 500000
