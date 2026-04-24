@@ -17,7 +17,7 @@ import torch
 import wandb
 from stable_baselines3 import SAC
 from stable_baselines3.common.callbacks import CheckpointCallback
-from wandb.integration.sb3 import WandbCallback
+from stable_baselines3.common.logger import configure
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
@@ -203,6 +203,7 @@ def main():
             args.resume,
             env=env,
             device=device,
+            buffer_size=sac_cfg["buffer_size"],
         )
         replay_path = args.resume.replace(".zip", "_replay_buffer.pkl")
         if os.path.exists(replay_path):
@@ -239,9 +240,11 @@ def main():
             upload_freq=cfg.get("r2_upload_freq", 5000),
         )
 
-    callbacks = [checkpoint_callback]
     if not args.no_wandb:
-        callbacks.append(WandbCallback(verbose=2))
+        new_logger = configure(save_dir, ["stdout", "wandb"])
+        model.set_logger(new_logger)
+
+    callbacks = [checkpoint_callback]
     if r2_callback is not None:
         callbacks.append(r2_callback)
 

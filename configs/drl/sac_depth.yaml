@@ -8,13 +8,13 @@ env:
   max_vel: 5.0
   max_yaw_rate: 229.0
   desired_distance: 2.0
-  max_distance: 8.0
-  min_distance: 0.3
+  max_distance: 10.0
+  min_distance: 1.0
 
 sac:
-  total_timesteps: 200000
+  total_timesteps: 500000
   learning_rate: 0.0003
-  buffer_size: 10000
+  buffer_size: 30000
   batch_size: 64
   learning_starts: 1000
   train_freq: 8
