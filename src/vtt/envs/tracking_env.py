@@ -401,30 +401,30 @@ class TrackingEnv(gym.Env):
 
     def _compute_reward(self, relative_pos):
         x, y, z = relative_pos
-        dist = abs(np.linalg.norm(relative_pos))
+        dist = float(np.linalg.norm(relative_pos))
 
         if abs(x) < 0.01:
             x = 0.01
 
         fov_half = np.pi / 4
-        # Angular errors
-        y_err = abs(np.arctan(y / x) / fov_half)
-        z_err = abs(np.arctan(z / x) / fov_half)
-        x_err = abs(x - self.desired_distance)
+
+        y_err = min(abs(np.arctan(y / x) / fov_half), 1.0)
+        z_err = min(abs(np.arctan(z / x) / fov_half), 1.0)
+
+        x_err = min(abs(x - self.desired_distance) / self.max_distance, 1.0)
 
         # Per-axis rewards
-        y_rew = max(0, 1 - y_err)
-        z_rew = max(0, 1 - z_err)
-        x_rew = max(0, 1 - x_err)
+        y_rew = 1.0 - y_err
+        z_rew = 1.0 - z_err
+        x_rew = 1.0 - x_err
 
-        r_track = (x_rew * y_rew * z_rew) ** (1 / 3)
-        reward = r_track * (300 / self.max_episode_steps)
+        r_track = 0.4 * x_rew + 0.3 * y_rew + 0.3 * z_rew
 
         done = bool(dist > self.max_distance or dist < self.min_distance)
         if done:
-            reward = -10.0 / (300 / self.max_episode_steps)
+            r_track = -1.0
 
-        return float(reward), done
+        return float(r_track), done
 
     def close(self):
         if self._follower is not None:

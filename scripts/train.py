@@ -273,9 +273,10 @@ def main():
     print(f"Starting training: {total_timesteps} timesteps, eval every {eval_freq}")
 
     try:
-        timesteps_done = 0
-        while timesteps_done < total_timesteps:
-            chunk = min(eval_freq, total_timesteps - timesteps_done)
+        timesteps_done = model.num_timesteps
+        target_timesteps = timesteps_done + total_timesteps
+        while timesteps_done < target_timesteps:
+            chunk = min(eval_freq, target_timesteps - timesteps_done)
 
             model.learn(
                 total_timesteps=chunk,
