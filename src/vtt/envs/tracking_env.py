@@ -259,7 +259,7 @@ class TrackingEnv(gym.Env):
                 return self._step_inner(action)
         except AirSimTimeout:
             print(f"TrackingEnv: step timed out at step {self._step_count}")
-            return self._zero_obs(), -1.0, True, False, {"airsim_timeout": True}
+            return self._zero_obs(), -10.0, True, False, {"airsim_timeout": True}
 
     def _step_inner(self, action):
         vx_body = float(action[0]) * self.max_vel
@@ -298,7 +298,7 @@ class TrackingEnv(gym.Env):
 
         # Terminate if target lost for too long
         if self._frames_without_detection >= self._max_lost_steps:
-            reward = -1.0
+            reward = -10.0
             done = True
 
         truncated = self._step_count >= self.max_episode_steps
@@ -408,32 +408,30 @@ class TrackingEnv(gym.Env):
         if abs(x) < 0.01:
             x = 0.01
 
-        fov_half = np.pi / 4
+        y_err = abs(np.arctan(y / x) / (np.pi / 4))
+        z_err = abs(np.arctan(z / x) / (np.pi / 4))
+        x_err = abs(x - self.desired_distance)
 
-        y_err = min(abs(np.arctan(y / x) / fov_half), 1.0)
-        z_err = min(abs(np.arctan(z / x) / fov_half), 1.0)
-        x_err = min(abs(x - self.desired_distance) / self.max_distance, 1.0)
+        y_rew = max(0.0, 1.0 - y_err)
+        z_rew = max(0.0, 1.0 - z_err)
+        x_rew = max(0.0, 1.0 - x_err)
 
-        # Position tracking
-        y_rew = 1.0 - y_err
-        z_rew = 1.0 - z_err
-        x_rew = 1.0 - x_err
+        r_track = (x_rew * y_rew * z_rew) ** (1 / 3)
 
-        # Penalise high relative velocity
-        vel_err = min(float(np.linalg.norm(relative_vel)) / self.max_vel, 1.0)
-        r_vel = 1.0 - vel_err
+        # Velocity and acceleration penalties
+        vel_norm = float(np.linalg.norm(relative_vel))
+        acc_norm = float(np.linalg.norm(relative_acc))
+        vel_penalty = vel_norm / (1.0 + vel_norm)
+        acc_penalty = acc_norm / (1.0 + acc_norm)
 
-        # Penalise high relative acceleration
-        acc_err = min(float(np.linalg.norm(relative_acc)) / (2.0 * self.max_vel), 1.0)
-        r_smooth = 1.0 - acc_err
-
-        r_track = 0.3 * x_rew + 0.2 * y_rew + 0.2 * z_rew + 0.2 * r_vel + 0.1 * r_smooth
+        step_scale = 300.0 / self.max_episode_steps
+        reward = (r_track - 0.4 * vel_penalty - 0.4 * acc_penalty) * step_scale
 
         done = bool(dist > self.max_distance or dist < self.min_distance)
         if done:
-            r_track = -1.0
+            reward = -10.0 / step_scale
 
-        return float(r_track), done
+        return float(reward), done
 
     def close(self):
         if self._follower is not None:

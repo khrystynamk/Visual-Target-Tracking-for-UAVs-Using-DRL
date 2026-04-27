@@ -18,7 +18,7 @@ sac:
   batch_size: 256
   learning_starts: 1000
   train_freq: 8
-  ent_coef: 0.05
+  ent_coef: 0.1
   gamma: 0.99
   tau: 0.005
 
