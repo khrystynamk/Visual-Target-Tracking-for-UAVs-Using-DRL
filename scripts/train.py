@@ -221,6 +221,7 @@ def main():
             train_freq=sac_cfg["train_freq"],
             gamma=sac_cfg["gamma"],
             tau=sac_cfg["tau"],
+            ent_coef=sac_cfg.get("ent_coef", "auto"),
             verbose=1,
             device=device,
         )

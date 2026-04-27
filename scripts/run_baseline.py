@@ -2,10 +2,10 @@
 Run the baseline tracker against a scripted target trajectory.
 
 Usage:
-  python scripts/run_baseline_p.py --trajectory sinusoidal --duration 40
-  python scripts/run_baseline_p.py --trajectory helix --duration 60
-  python scripts/run_baseline_p.py --trajectory figure_eight --duration 40
-  python scripts/run_baseline_p.py --trajectory keyboard  # manual control
+  python scripts/run_baseline.py --trajectory sinusoidal --duration 40
+  python scripts/run_baseline.py --trajectory helix --duration 60
+  python scripts/run_baseline.py --trajectory figure_eight --duration 40
+  python scripts/run_baseline.py --trajectory keyboard  # manual control
 
 Available trajectories:
   sinusoidal, helix, figure_eight, circular, keyboard
