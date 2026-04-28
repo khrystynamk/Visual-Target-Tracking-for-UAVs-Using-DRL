@@ -98,6 +98,7 @@ class CircularTrajectory(BaseTrajectory):
         angular_speed: float = 0.3,
         vertical_amplitude: float = 0.0,
         vertical_frequency: float = 0.1,
+        phase: float = np.pi,
         origin: np.ndarray | None = None,
     ):
         super().__init__(origin)
@@ -105,22 +106,26 @@ class CircularTrajectory(BaseTrajectory):
         self.omega = angular_speed
         self.z_amp = vertical_amplitude
         self.z_w = 2 * np.pi * vertical_frequency
+        self.phi = phase
+        # offset so position(0) == origin
+        self._x0 = self.r * np.cos(self.phi)
+        self._y0 = self.r * np.sin(self.phi)
 
     def position(self, t: float):
-        x = self.r * np.cos(self.omega * t) - self.r
-        y = self.r * np.sin(self.omega * t)
+        x = self.r * np.cos(self.omega * t + self.phi) - self._x0
+        y = self.r * np.sin(self.omega * t + self.phi) - self._y0
         z = self.z_amp * np.sin(self.z_w * t)
         return np.array([x, y, z]) + self.origin
 
     def velocity(self, t: float):
-        vx = -self.r * self.omega * np.sin(self.omega * t)
-        vy = self.r * self.omega * np.cos(self.omega * t)
+        vx = -self.r * self.omega * np.sin(self.omega * t + self.phi)
+        vy = self.r * self.omega * np.cos(self.omega * t + self.phi)
         vz = self.z_amp * self.z_w * np.cos(self.z_w * t)
         return np.array([vx, vy, vz])
 
     def acceleration(self, t: float):
-        ax = -self.r * self.omega**2 * np.cos(self.omega * t)
-        ay = -self.r * self.omega**2 * np.sin(self.omega * t)
+        ax = -self.r * self.omega**2 * np.cos(self.omega * t + self.phi)
+        ay = -self.r * self.omega**2 * np.sin(self.omega * t + self.phi)
         az = -self.z_amp * self.z_w**2 * np.sin(self.z_w * t)
         return np.array([ax, ay, az])
 

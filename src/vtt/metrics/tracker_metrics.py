@@ -11,7 +11,6 @@ class Metrics:
     mean_dist3d_m         : mean Euclidean tracker-target distance
     dist3d_rmse_m         : RMS of tracker-target distance
     mean_episode_frames   : mean length of continuous detection streaks
-    mean_recovery_frames  : mean frames from loss to re-detection
     """
 
     def __init__(self):
@@ -25,8 +24,6 @@ class Metrics:
         # episode = continuous detection streak
         self._episode_lengths = []
         self._cur_episode = 0
-        # recovery = frames from loss onset to re-detection
-        self._recovery_times = []
         self._in_loss = False
         self._loss_duration = 0
 
@@ -40,7 +37,6 @@ class Metrics:
             self._dist3d_sq_sum += dist3d**2
             self._cur_episode += 1
             if self._in_loss:
-                self._recovery_times.append(self._loss_duration)
                 self._loss_duration = 0
                 self._in_loss = False
         else:
@@ -61,11 +57,6 @@ class Metrics:
         mean_ep = (
             round(float(np.mean(all_episodes)), 2) if all_episodes else float("nan")
         )
-        mean_rec = (
-            round(float(np.mean(self._recovery_times)), 2)
-            if self._recovery_times
-            else float("nan")
-        )
         return {
             "total_frames": total,
             "detect_rate_%": round(100.0 * n / total, 2) if total else 0.0,
@@ -80,5 +71,4 @@ class Metrics:
             if n
             else float("nan"),
             "mean_episode_frames": mean_ep,
-            "mean_recovery_frames": mean_rec,
         }
