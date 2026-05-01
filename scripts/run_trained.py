@@ -2,9 +2,9 @@
 Run a trained SAC agent against a scripted target trajectory.
 
 Usage:
-  python scripts/run_trained.py --model experiments/sac_depth/best/best_model.zip
-  python scripts/run_trained.py --model experiments/sac_depth/best/best_model.zip --trajectory circular --duration 40
-  python scripts/run_trained.py --model experiments/sac_depth/best/best_model.zip --trajectory figure_eight
+  python scripts/run_trained.py --model model.zip
+  python scripts/run_trained.py --model model.zip --trajectory circular --duration 40
+  python scripts/run_trained.py --model model.zip --trajectory figure_eight
 
 Available trajectories:
   sinusoidal, helix, figure_eight, circular

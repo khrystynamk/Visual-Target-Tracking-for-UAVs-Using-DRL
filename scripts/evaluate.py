@@ -2,8 +2,8 @@
 Evaluate and compare the P-controller baseline and SAC agent on multiple trajectories (sinusoidal, circular, and figure-8).
 
 Usage:
-  python scripts/evaluate.py --model experiments/sac_depth/best/best_model.zip
-  python scripts/evaluate.py --model experiments/sac_depth/final_model.zip --duration 20
+  python scripts/evaluate.py --model model.zip
+  python scripts/evaluate.py --model model.zip --duration 20
 """
 
 import argparse

@@ -6,8 +6,9 @@
 # Usage (on the instance):
 #   bash scripts/r2_stop.sh
 #
-# Or from your Mac via SSH:
+# Or from your laptop via SSH:
 #   ssh -p PORT root@HOST 'cd /workspace/vtt && bash scripts/r2_stop.sh'
+
 set -euo pipefail
 
 TRAIN_PID="$(pgrep -of 'python scripts/train.py' || true)"

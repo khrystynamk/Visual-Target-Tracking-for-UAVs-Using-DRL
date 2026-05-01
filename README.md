@@ -26,6 +26,10 @@ The system uses an **asymmetric SAC policy** where the actor and critic observe 
 - [Setup Guide](docs/setup_guide.md) — Project installation and usage instructions
 - [AirSim Setup Guide](docs/airsim_setup_guide.md) — Building AirSim with UE 4.27 on macOS
 
+## Trained Model
+
+The final trained SAC model is available on [Google Drive](https://drive.google.com/drive/folders/19MdBHJgSqu1Q4afpAj9ryRZcVXlR4sq1?usp=sharing).
+
 ## License
 
 This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.

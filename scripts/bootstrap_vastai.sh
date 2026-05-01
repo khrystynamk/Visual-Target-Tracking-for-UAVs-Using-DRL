@@ -16,6 +16,7 @@
 #   RESUME       - "auto" to resume from R2, "off" to start fresh (default: auto)
 #   R2_SYNC      - "1" to enable R2 checkpoint sync (default: 1)
 #   N_ENVS       - number of parallel AirSim environments (default: 1)
+
 set -euxo pipefail
 
 : "${CONFIG:=configs/drl/sac_depth.yaml}"
@@ -33,7 +34,7 @@ for v in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_ACCOUNT_ID WANDB_API_KEY; do
   fi
 done
 
-# --- System deps for UE Linux Shipping binaries ------------------------------
+# System deps for UE Linux Shipping binaries
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends \
@@ -44,7 +45,7 @@ apt-get install -y --no-install-recommends \
   xvfb x11-utils mesa-utils \
   unzip curl ca-certificates git netcat-openbsd tmux
 
-# --- AWS CLI v2 -------------------------------------------------------------
+# AWS CLI v2
 if ! command -v aws >/dev/null; then
   curl -L "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscli.zip
   unzip -q /tmp/awscli.zip -d /tmp
@@ -64,14 +65,13 @@ endpoint_url=https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
 output=json
 CONF
 
-# --- Pull the AirSim binary from R2 -----------------------------------------
+# Pull the AirSim binary from R2
 mkdir -p /opt/airsim
 aws --profile r2 s3 cp "s3://${BUCKET}/${UE_PKG_KEY}" /tmp/airsim.zip
 rm -rf /opt/airsim
 unzip -q /tmp/airsim.zip -d /opt/airsim
 
-# Find the launcher script wherever it landed (names vary across AirSim
-# releases and between stock vs custom packages).
+# Find the launcher script wherever it landed
 AIRSIM_SH="$(find /opt/airsim -maxdepth 4 -type f \
     \( -name 'Blocks.sh' -o -name 'AirSimNH.sh' -o -name '*.sh' \) \
     -path '*/Linux*/*' 2>/dev/null | head -1)"
@@ -82,7 +82,7 @@ fi
 chmod +x "$AIRSIM_SH"
 echo "bootstrap_vastai: AirSim launcher = $AIRSIM_SH"
 
-# --- AirSim settings.json ----------------------------------------------------
+# AirSim settings.json
 SETTINGS_PATH=/opt/airsim/settings.json
 mkdir -p "$(dirname "$SETTINGS_PATH")"
 cp configs/airsim/settings.json "$SETTINGS_PATH"
@@ -91,15 +91,14 @@ mkdir -p "$HOME/Documents/AirSim"
 cp configs/airsim/settings.json "$HOME/Documents/AirSim/settings.json"
 echo "bootstrap_vastai: settings at $SETTINGS_PATH and $HOME/Documents/AirSim/"
 
-# --- Launch AirSim instance(s) -----------------------------------------------
-# Always N_ENVS + 1: the extra instance is for eval (dedicated port so
-# eval's client.reset() doesn't nuke training sim state).
+# Launch AirSim instance(s)
+# Always N_ENVS + 1: the extra instance is for eval
 export AIRSIM_SETTINGS="$SETTINGS_PATH"
 TOTAL_AIRSIM=$((N_ENVS + 1))
 echo "bootstrap_vastai: launching $TOTAL_AIRSIM AirSim instances ($N_ENVS train + 1 eval)"
 bash scripts/launch_airsim_fleet.sh "$TOTAL_AIRSIM"
 
-# --- Python 3.11 venv (airsim + tornado 4.x are broken on 3.12+) ------------
+# Python 3.11 venv (airsim + tornado 4.x are broken on 3.12+)
 apt-get install -y --no-install-recommends software-properties-common
 add-apt-repository -y ppa:deadsnakes/ppa
 apt-get update
@@ -108,27 +107,27 @@ apt-get install -y --no-install-recommends python3.11 python3.11-venv python3.11
 python3.11 -m venv /opt/venv
 source /opt/venv/bin/activate
 
-# --- Python deps -------------------------------------------------------------
+# Python deps
 pip install torch torchvision tensorboard
 pip install msgpack-rpc-python
 pip install --no-build-isolation airsim
 
-# --- DeFM (Depth Foundation Model) ------------------------------------------
+# Install DeFM (Depth Foundation Model) repository
 pip install huggingface_hub omegaconf
 rm -rf /opt/defm
 git clone https://github.com/leggedrobotics/defm.git /opt/defm
 pip install -e /opt/defm --no-deps  # --no-deps to avoid tornado conflict
 
-# --- Install project ---------------------------------------------------------
+# Install VTT
 pip install -e .
 
-# --- CUDA memory optimization ------------------------------------------------
+# CUDA memory optimization
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
-# --- W&B + train -------------------------------------------------------------
+# W&B logging
 wandb login "$WANDB_API_KEY"
 
-# --- Build training command ---------------------------------------------------
+# Train
 TRAIN_CMD=(python scripts/train.py --config "$CONFIG")
 
 if [ "$RESUME" = "auto" ]; then
@@ -145,7 +144,7 @@ if [ -n "$RUN_ID" ]; then
   TRAIN_CMD+=(--run-id "$RUN_ID")
 fi
 
-# Always monitor images — catches dead renderers early
+# Always monitor images
 # TRAIN_CMD+=(--image-monitor)
 
 if [ "$N_ENVS" -gt 1 ]; then

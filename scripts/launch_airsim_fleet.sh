@@ -10,6 +10,7 @@
 #   - Its own settings.json with the correct ApiServerPort
 #
 # The script waits for all instances to open their RPC ports before exiting.
+
 set -euo pipefail
 
 N_ENVS="${1:-4}"
@@ -123,6 +124,7 @@ for i in $(seq 0 $((N_ENVS - 1))); do
 done
 
 echo "launch_fleet: all $N_ENVS instances ready"
+
 # Write port list for train.py to read
 PORT_LIST=""
 for i in $(seq 0 $((N_ENVS - 1))); do
