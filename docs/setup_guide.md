@@ -59,7 +59,7 @@ pip install -e .
 
 This installs the `vtt` package in editable mode along with all remaining dependencies (gymnasium, stable-baselines3, wandb, opencv, etc.).
 
-## 6. AirSim Settings
+## 7. AirSim Settings
 
 Copy the project's AirSim settings to the location AirSim reads from:
 
@@ -71,11 +71,11 @@ This configures:
 - Two vehicles: `Drone1` (tracker) and `Target`
 - Front-center camera at 224x224 with 90-degree FOV
 - Depth (DepthPerspective, DepthVis) and RGB image types
-- Target spawns 3m in front of the tracker
+- Target spawns 2m in front of the tracker
 
 **Important:** AirSim reads settings from `~/Documents/AirSim/settings.json` on launch. Any changes to `configs/airsim/settings.json` must be copied there and UE4 must be restarted.
 
-## 7. Launch the Simulator
+## 8. Launch the Simulator
 
 ### Using the Blocks environment (without opening the Editor)
 
@@ -85,7 +85,7 @@ This configures:
   -game -log
 ```
 
-## 8. Running the Project
+## 9. Running the Project
 
 ### P-Controller Baseline
 
@@ -97,11 +97,20 @@ python scripts/run_baseline.py --trajectory sinusoidal --duration 15
 python scripts/run_baseline.py --trajectory keyboard
 ```
 
+### Run Trained SAC Agent
+
+```bash
+python scripts/run_trained.py --model model.zip --trajectory sinusoidal --duration 15
+```
+
 ### Train SAC Agent (Depth)
 
 ```bash
-# Start training
+# Start training (single environment)
 python scripts/train.py --config configs/drl/sac_depth.yaml
+
+# With parallel environments
+python scripts/train.py --config configs/drl/sac_depth.yaml --n-envs 6
 
 # Without W&B logging
 python scripts/train.py --config configs/drl/sac_depth.yaml --no-wandb
@@ -109,17 +118,32 @@ python scripts/train.py --config configs/drl/sac_depth.yaml --no-wandb
 # Resume from checkpoint
 python scripts/train.py --config configs/drl/sac_depth.yaml \
     --resume experiments/sac_depth/checkpoints/sac_5000_steps.zip
+
+# Resume latest from R2 cloud storage
+python scripts/train.py --config configs/drl/sac_depth.yaml --resume auto --r2-sync
 ```
 
-### Evaluate and Compare
+### Evaluate and Compare (Baseline vs SAC)
 
 ```bash
-python scripts/evaluate.py --model experiments/sac_depth/best/best_model.zip --duration 15
+# 5 runs per method (default)
+python scripts/evaluate.py --model experiments/sac_depth/best/best_model.zip \
+    --trajectory sinusoidal
+
+# Custom number of runs and duration
+python scripts/evaluate.py --model experiments/sac_depth/best/best_model.zip \
+    --trajectory circular --runs 3 --duration 20
+
+# With weather/lighting condition (depth robustness test)
+python scripts/evaluate.py --model experiments/sac_depth/best/best_model.zip \
+    --trajectory sinusoidal --condition rain
 ```
 
-This runs both the P-controller baseline and the SAC agent on sinusoidal, circular, and figure-8 trajectories, generating comparison plots and metrics in `experiments/evaluation/`.
+Available trajectories: `sinusoidal`, `circular`, `figure_eight`, `helix`
 
-## 9. Weights & Biases (Optional)
+Available conditions: `default`, `rain`, `fog`, `dust`, `dawn`, `dawn_rain`
+
+## 10. Weights & Biases (Optional)
 
 For experiment tracking:
 
@@ -127,32 +151,46 @@ For experiment tracking:
 wandb login
 ```
 
-Training curves, episode rewards, and metrics are logged automatically when W&B is enabled.
+Training curves and episode rewards are logged automatically when W&B is enabled.
 
-## 10. Project Structure
+## 11. Project Structure
 
 ```
 Visual-Target-Tracking-for-UAVs-Using-DRL/
 ├── configs/
-│   ├── airsim/settings.json       # AirSim vehicle/camera config
-│   └── drl/sac_depth.yaml         # SAC training hyperparameters
+│   ├── airsim/settings.json          # AirSim vehicle/camera config
+│   └── drl/sac_depth.yaml            # SAC training hyperparameters
+├── docs/
+│   ├── setup_guide.md
+│   └── airsim_setup_guide.md
 ├── scripts/
-│   ├── train.py                   # Train SAC agent
-│   ├── run_baseline.py            # Run P-controller baseline
-│   └── evaluate.py                # Compare baseline vs SAC
+│   ├── train.py                      # Train SAC agent
+│   ├── run_baseline.py               # Run P-controller baseline
+│   ├── run_trained.py                # Run trained SAC agent
+│   ├── evaluate.py                   # Compare baseline vs SAC
+│   ├── bootstrap_vastai.sh           # Vast.ai cloud bootstrap
+│   ├── launch_airsim_fleet.sh        # Launch parallel AirSim instances
 ├── src/vtt/
-│   ├── constants.py               # Shared constants
-│   ├── envs/tracking_env.py       # Gymnasium environment (AirSim)
+│   ├── constants.py                  # Shared constants
+│   ├── envs/
+│   │   └── tracking_env.py           # Gymnasium environment (AirSim)
 │   ├── models/
-│   │   ├── feature_extractors.py  # DepthResNet (ResNet-18 for depth)
-│   │   └── asymmetric_policy.py   # Asymmetric SAC (actor/critic)
-│   ├── control/p_controller.py    # P-controller baseline
+│   │   ├── feature_extractors.py     # DepthResNet (ResNet-18 + DeFM)
+│   │   └── asymmetric_policy.py      # Asymmetric SAC (actor/critic)
+│   ├── control/
+│   │   └── p_controller.py           # P-controller baseline
 │   ├── target/
-│   │   ├── trajectory_follower.py # Target follows scripted trajectories
-│   │   └── keyboard_controller.py # Manual keyboard control
-│   └── metrics/
-│       ├── tracker_metrics.py     # Detection rate, RMSE, loss events
-│       ├── scripted_trajectories.py # Sinusoidal, circular, figure-8
-│       └── trajectory_comparison.py # 3D plots, error computation
-└── experiments/                   # Training outputs (gitignored)
+│   │   ├── trajectory_follower.py    # Target follows scripted trajectories
+│   │   └── keyboard_controller.py    # Manual keyboard control
+│   ├── metrics/
+│   │   ├── constants.py              # Trajectory presets (train + eval)
+│   │   ├── tracker_metrics.py        # Detection rate, RMSE, loss events
+│   │   ├── scripted_trajectories.py  # Sinusoidal, circular, figure-8, helix
+│   │   └── trajectory_comparison.py  # 3D plots, error computation
+│   ├── callbacks/
+│   │   ├── image_monitor.py          # Depth image logging callback
+│   │   └── r2_sync.py                # R2 cloud sync callback
+│   └── utils/
+│       ├── camera_helpers.py         # Camera capture, detection, bbox
+│       └── common_utils.py           # Shared utility functions
 ```
