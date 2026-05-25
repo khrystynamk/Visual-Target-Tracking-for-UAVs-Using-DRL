@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Gracefully stop training on a vast.ai instance.
-# Sends SIGTERM to train.py, which triggers the finally block
-# (saves final model + replay buffer, uploads to R2).
+# Sends SIGTERM to train.py / train_ppo.py, which triggers the finally block
+# (saves final model + replay buffer for SAC, uploads to R2).
 #
 # Usage (on the instance):
 #   bash scripts/r2_stop.sh
@@ -11,14 +11,14 @@
 
 set -euo pipefail
 
-TRAIN_PID="$(pgrep -of 'python scripts/train.py' || true)"
+TRAIN_PID="$(pgrep -of 'python scripts/train(_ppo)?\.py' || true)"
 
 if [ -z "$TRAIN_PID" ]; then
   echo "r2_stop: no training process found"
   exit 0
 fi
 
-echo "r2_stop: sending SIGTERM to train.py (PID $TRAIN_PID)"
+echo "r2_stop: sending SIGTERM to training script (PID $TRAIN_PID)"
 kill -TERM "$TRAIN_PID"
 
 # Wait for process to finish (model save + R2 upload)

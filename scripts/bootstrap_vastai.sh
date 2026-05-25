@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Provisions a vast.ai instance for SAC training against an AirSim Linux binary
+# Provisions a vast.ai instance for PPO training against an AirSim Linux binary
 # pulled from Cloudflare R2, then starts training.
 #
 # Required env vars (set in vast.ai template):
@@ -9,7 +9,7 @@
 #   WANDB_API_KEY
 #
 # Optional env vars:
-#   CONFIG       - training config path (default: configs/drl/sac_depth.yaml)
+#   CONFIG       - training config path (default: configs/drl/ppo_depth.yaml)
 #   UE_PKG_KEY   - R2 key for the AirSim zip (default: ue-packages/Blocks.zip)
 #   BUCKET       - R2 bucket (default: vtt-uav-artifacts)
 #   RUN_ID       - R2 run identifier (default: derived from config's wandb.name)
@@ -19,7 +19,7 @@
 
 set -euxo pipefail
 
-: "${CONFIG:=configs/drl/sac_depth.yaml}"
+: "${CONFIG:=configs/drl/ppo_depth.yaml}"
 : "${UE_PKG_KEY:=ue-packages/Blocks.zip}"
 : "${BUCKET:=vtt-uav-artifacts}"
 : "${RUN_ID:=}"
@@ -128,7 +128,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 wandb login "$WANDB_API_KEY"
 
 # Train
-TRAIN_CMD=(python scripts/train.py --config "$CONFIG")
+TRAIN_CMD=(python scripts/train_ppo.py --config "$CONFIG")
 
 if [ "$RESUME" = "auto" ]; then
   TRAIN_CMD+=(--resume auto)
