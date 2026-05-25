@@ -21,6 +21,7 @@ from stable_baselines3.common.logger import configure
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
+from wandb.integration.sb3 import WandbCallback
 
 from vtt.envs.tracking_env import TrackingEnv
 from vtt.models.asymmetric_ppo_policy import AsymmetricPPOPolicy
@@ -207,6 +208,9 @@ def main():
     if r2_callback is not None:
         callbacks.append(r2_callback)
 
+    if not args.no_wandb:
+        callbacks.append(WandbCallback(verbose=1))
+
     if args.image_monitor:
         from vtt.callbacks.image_monitor import ImageMonitorCallback
 
@@ -238,26 +242,34 @@ def main():
             model.learn(
                 total_timesteps=chunk,
                 callback=callbacks,
-                log_interval=10,
+                log_interval=1,
                 reset_num_timesteps=False,
             )
             timesteps_done = model.num_timesteps
 
-            mean_reward, std_reward = evaluate_policy(
+            ep_rewards, ep_lengths = evaluate_policy(
                 model,
                 eval_env,
                 n_eval_episodes=eval_episodes,
                 deterministic=True,
+                return_episode_rewards=True,
             )
+            ep_rewards = np.asarray(ep_rewards, dtype=np.float64)
+            ep_lengths = np.asarray(ep_lengths, dtype=np.float64)
+            mean_reward, std_reward = float(ep_rewards.mean()), float(ep_rewards.std())
+            mean_len, std_len = float(ep_lengths.mean()), float(ep_lengths.std())
             print(
                 f"Eval at {timesteps_done} steps: "
-                f"reward={mean_reward:.2f} +/- {std_reward:.2f}"
+                f"reward={mean_reward:.2f} +/- {std_reward:.2f} | "
+                f"ep_len={mean_len:.1f} +/- {std_len:.1f}"
             )
             if not args.no_wandb:
                 wandb.log(
                     {
                         "eval/mean_reward": mean_reward,
                         "eval/std_reward": std_reward,
+                        "eval/mean_ep_len": mean_len,
+                        "eval/std_ep_len": std_len,
                     },
                     step=timesteps_done,
                 )
