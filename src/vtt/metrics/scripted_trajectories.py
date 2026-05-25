@@ -111,6 +111,33 @@ class CircularTrajectory(BaseTrajectory):
         self._x0 = self.r * np.cos(self.phi)
         self._y0 = self.r * np.sin(self.phi)
 
+    @classmethod
+    def random(
+        cls,
+        radius_range: tuple[float, float] = (2.0, 5.0),
+        angular_speed_range: tuple[float, float] = (0.15, 0.4),
+        vertical_amplitude_range: tuple[float, float] = (0.0, 1.5),
+        vertical_frequency_range: tuple[float, float] = (0.03, 0.1),
+        origin: np.ndarray | None = None,
+        rng: np.random.Generator | None = None,
+    ):
+        rng = rng or np.random.default_rng()
+        radius = float(rng.uniform(*radius_range))
+        angular_speed = float(rng.uniform(*angular_speed_range)) * float(
+            rng.choice([-1.0, 1.0])
+        )
+        vertical_amplitude = float(rng.uniform(*vertical_amplitude_range))
+        vertical_frequency = float(rng.uniform(*vertical_frequency_range))
+        phase = float(rng.uniform(0.0, 2.0 * np.pi))
+        return cls(
+            radius=radius,
+            angular_speed=angular_speed,
+            vertical_amplitude=vertical_amplitude,
+            vertical_frequency=vertical_frequency,
+            phase=phase,
+            origin=origin,
+        )
+
     def position(self, t: float):
         x = self.r * np.cos(self.omega * t + self.phi) - self._x0
         y = self.r * np.sin(self.omega * t + self.phi) - self._y0
@@ -146,6 +173,19 @@ class FigureEightTrajectory(BaseTrajectory):
         super().__init__(origin)
         self.size = size
         self.w = 2 * np.pi * speed
+
+    @classmethod
+    def random(
+        cls,
+        size_range: tuple[float, float] = (2.0, 5.0),
+        speed_range: tuple[float, float] = (0.05, 0.15),
+        origin: np.ndarray | None = None,
+        rng: np.random.Generator | None = None,
+    ):
+        rng = rng or np.random.default_rng()
+        size = float(rng.uniform(*size_range))
+        speed = float(rng.uniform(*speed_range))
+        return cls(size=size, speed=speed, origin=origin)
 
     def position(self, t: float):
         x = self.size * np.sin(self.w * t)

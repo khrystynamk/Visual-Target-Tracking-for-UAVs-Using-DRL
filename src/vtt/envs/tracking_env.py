@@ -33,7 +33,7 @@ from vtt.utils.camera_helpers import (
     get_relative_bbox,
     render_depth_with_bbox,
 )
-from vtt.metrics.constants import TRAJECTORY_TRAIN_PRESETS
+from vtt.metrics.constants import sample_train_trajectory
 
 RPC_TIMEOUT_S = 15  # seconds before we consider AirSim hung
 
@@ -113,6 +113,7 @@ class TrackingEnv(gym.Env):
         desired_distance: float = DESIRED_DISTANCE,
         max_distance: float = MAX_DISTANCE,
         min_distance: float = MIN_DISTANCE,
+        lost_detection_penalty: float = 0.25,
         show_cv: bool = False,
         render_mode: str | None = None,
         api_port: int = 41451,
@@ -128,6 +129,7 @@ class TrackingEnv(gym.Env):
         self.desired_distance = desired_distance
         self.max_distance = max_distance
         self.min_distance = min_distance
+        self.lost_detection_penalty = lost_detection_penalty
         self.render_mode = render_mode
         self.api_port = api_port
 
@@ -147,11 +149,12 @@ class TrackingEnv(gym.Env):
                     shape=(4,),
                     dtype=np.float32,
                 ),
-                # Relative target state [pos(3), vel(3), acc(3)] — critic only
+                # Relative target state + tracker orientation — critic only
+                # [rel_pos(3), rel_vel(3), rel_acc(3), roll, pitch, yaw]
                 "critic_state": gym.spaces.Box(
                     -np.inf,
                     np.inf,
-                    shape=(9,),
+                    shape=(12,),
                     dtype=np.float32,
                 ),
             }
@@ -216,8 +219,7 @@ class TrackingEnv(gym.Env):
         tp = target_pose.position
         origin = np.array([tp.x_val, tp.y_val, -tp.z_val])
 
-        idx = self._episode_count % len(TRAJECTORY_TRAIN_PRESETS)
-        self._trajectory = TRAJECTORY_TRAIN_PRESETS[idx](origin)
+        self._trajectory = sample_train_trajectory(self.np_random, origin)
         self._episode_count += 1
 
         self._follower = TrajectoryFollower(
@@ -248,7 +250,7 @@ class TrackingEnv(gym.Env):
         return {
             "image": img,
             "bbox": np.array([0.5, 0.5, 0.0, 0.0], dtype=np.float32),
-            "critic_state": np.zeros(9, dtype=np.float32),
+            "critic_state": np.zeros(12, dtype=np.float32),
         }
 
     def step(self, action):
@@ -366,8 +368,12 @@ class TrackingEnv(gym.Env):
         rel_vel = R @ (tgt_vel - t_vel)
         rel_acc = R @ (tgt_acc - t_acc)
 
-        # 9D relative target state
-        critic_state = np.concatenate([rel_pos, rel_vel, rel_acc]).astype(np.float32)
+        roll, pitch, yaw = airsim.to_eularian_angles(q)
+
+        # 12D critic state: rel target [pos, vel, acc] + tracker [roll, pitch, yaw]
+        critic_state = np.concatenate(
+            [rel_pos, rel_vel, rel_acc, [roll, pitch, yaw]]
+        ).astype(np.float32)
 
         stacked = np.concatenate(self._frame_buffer, axis=0)
         bbox = self._get_bbox()
@@ -407,17 +413,23 @@ class TrackingEnv(gym.Env):
             x = 0.01
 
         fov_half = np.pi / 4
-        # Angular errors
+        # Normalized squared radial error so all axes are on [0, 1].
+        # x_scale = max_distance - desired_distance brings far-termination to x_err=1.
+        x_scale = self.max_distance - self.desired_distance
+        x_err = ((x - self.desired_distance) / x_scale) ** 2
         y_err = abs(np.arctan(y / x) / fov_half)
         z_err = abs(np.arctan(z / x) / fov_half)
-        x_err = abs(x - self.desired_distance)
 
-        # Per-axis rewards
+        x_rew = max(0, 1 - x_err)
         y_rew = max(0, 1 - y_err)
         z_rew = max(0, 1 - z_err)
-        x_rew = max(0, 1 - x_err)
 
         r_track = (x_rew * y_rew * z_rew) ** (1 / 3)
+
+        # Penalty whenever the current frame had no detection.
+        if self._frames_without_detection > 0:
+            r_track -= self.lost_detection_penalty
+
         reward = r_track * (300 / self.max_episode_steps)
 
         done = bool(dist > self.max_distance or dist < self.min_distance)

@@ -1,0 +1,37 @@
+# PPO training config — Depth agent (asymmetric actor-critic)
+# Input: 3 stacked depth frames (3, 224, 224) for the actor;
+#        privileged 12D state for the critic.
+
+env:
+  image_size: 224
+  frame_stack: 3
+  max_episode_steps: 300
+  max_vel: 5.0
+  max_yaw_rate: 229.0
+  desired_distance: 2.0
+  max_distance: 8.0
+  min_distance: 0.3
+  lost_detection_penalty: 0.25
+
+ppo:
+  total_timesteps: 1000000
+  learning_rate: 0.0003
+  n_steps: 512
+  batch_size: 256
+  n_epochs: 10
+  gamma: 0.99
+  gae_lambda: 0.95
+  clip_range: 0.2
+  ent_coef: 0.01
+  vf_coef: 0.5
+  max_grad_norm: 0.5
+  use_sde: true
+  sde_sample_freq: 4
+
+wandb:
+  project: "vtt-uav"
+  name: "ppo-depth-v1"
+
+save_dir: "experiments/ppo_depth"
+eval_freq: 5000
+eval_episodes: 5
